@@ -1,0 +1,34 @@
+[package]
+name = "quic_conn"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+s2n-quic = {workspace = true, features=["provider-event-tracing"]}
+anyhow = { workspace = true }
+bytes = { workspace = true }
+clap = { workspace = true }
+hdrhistogram = { workspace = true }
+rcgen = { workspace = true }
+rustls = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "io-util"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features=['env-filter'] }
+zeromq = {workspace = true}
+tokio-context = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+polars = {workspace = true, features=['parquet']}
+atomic_float = {workspace = true}
+log = {workspace = true}
+env_logger = {workspace = true}
+config = {workspace = true}
+libc = {workspace = true}
+ctrlc = {workspace = true}
+
+
+[lib]
+name="quic_conn"
+path = "src/lib.rs"

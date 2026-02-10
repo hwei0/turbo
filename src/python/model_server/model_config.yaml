@@ -1,0 +1,31 @@
+server_models:
+  "tf_efficientdet_d2":
+    base_model: "tf_efficientdet_d2"
+    checkpoint_path: /data/pschafhalter/av-bandwidth-sharing/models/tf_efficientdet_d2-waymo-open-dataset/version_2/checkpoints/epoch=9-step=419700.ckpt
+    device: "cuda:0"
+    num_classes: 5
+    image_size: [768, 768]
+  "tf_efficientdet_d4":
+    base_model: "tf_efficientdet_d4"
+    checkpoint_path: /data/pschafhalter/av-bandwidth-sharing/models/tf_efficientdet_d4-waymo-open-dataset/version_0/checkpoints/epoch=9-step=839400.ckpt
+    device: "cuda:2"
+    num_classes: 5
+    image_size: [1024, 1024]
+  "tf_efficientdet_d6":
+    base_model: "tf_efficientdet_d6"
+    checkpoint_path: /data/pschafhalter/av-bandwidth-sharing/models/tf_efficientdet_d6-waymo-open-dataset/version_2/checkpoints/epoch=9-step=3357600.ckpt
+    device: "cuda:3"
+    num_classes: 5
+    image_size: [1280, 1280]
+  "tf_efficientdet_d7x":
+    base_model: "tf_efficientdet_d7x"
+    checkpoint_path: /data/pschafhalter/av-bandwidth-sharing/models/tf_efficientdet_d7x-waymo-open-dataset/version_1/checkpoints/epoch=8-step=1477071.ckpt
+    device: "cuda:5"
+    num_classes: 5
+    image_size: [1536, 1536]
+
+client_backup_model: 
+  name: "edd1-imgcompNone-inpcompNone"
+  checkpoint_path: /data/pschafhalter/av-bandwidth-sharing/models/tf_efficientdet_d1-waymo-open-dataset/version_1/checkpoints/epoch=9-step=209850.ckpt
+  device: "cuda:1"
+  num_classes: 5

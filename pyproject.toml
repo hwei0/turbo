@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "turbo"
+version = "0.0.1"
+description = "TURBO: Utility-Aware Bandwidth Allocation for Cloud-Augmented Autonomous Control."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "absl-py",
+    "effdet==0.4.1",
+    "waymo-open-dataset-tf-2-11-0==1.6.1",
+    "polars",
+    "torch==2.1.0",
+    "torchvision==0.16.0",
+    "torchdata==0.7.0",
+    "transformers==4.28.0",
+    "transformers",
+    "pytorch-lightning",
+    "timm",
+    "torchdata",
+    "tqdm",
+    "opencv-python",
+    "ffmpeg-python",
+    "protobuf",
+    "pydantic",
+    "pyzmq",
+    "ping3",
+    "numpy",
+    "Pillow",
+    "matplotlib",
+    "Flask",
+    "flask-socketio",
+    "PyYAML",
+    "PuLP",
+    "pandas",
+    "plotly",
+    "cryptography",
+    "ipython"
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src/python/util", "/src/python/accuracy"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["/src/python/util", "/src/python/accuracy"]
+
+[tool.ruff]
+extend-include = ["*.ipynb"]

@@ -1,0 +1,33 @@
+zmq_pathdir: "/home/hwei/experiment2-out/zmq"
+slo_timeout_ms: 100
+junk_tx_loop_interval_ms: 7
+logging_interval_ms: 500
+init_allocation: 100000000.0
+bw_update_interval_ms: 500
+bw_polling_interval_ms: 200
+max_junk_payload_Mb: .5 # .5 Mb/s, this is the bandwidth not the payload size per send loop.
+junk_restart_interval_ms: 500
+
+services: [1, 2, 3, 4]
+
+quic_client_log_path: "/home/hwei/experiment2-out/quic-client-out"
+quic_server_log_path: "/home/hwei/experiment2-out/quic-server-out"
+
+client_enable_bw_stat_log: True
+client_enable_allocation_stat_log: True
+client_enable_network_stat_log: True
+client_enable_incoming_image_context_log: True
+client_enable_outgoing_image_context_log: True
+
+server_enable_bw_stat_log: True
+server_enable_allocation_stat_log: True
+server_enable_network_stat_log: True
+server_enable_incoming_image_context_log: True
+server_enable_outgoing_image_context_log: True
+
+image_context_log_capacity: 100
+bw_stat_log_capacity: 100
+allocation_stat_log_capacity: 100
+network_stat_log_capacity: 100
+
+enable_junk_service: True #if True, the last service on the list is junk

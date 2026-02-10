@@ -1,0 +1,227 @@
+logging_config_filepath: /home/hwei/turbo/config/logging_config.yaml
+
+web_dashboard_config:
+  refresh_rate_seconds: 6
+  plotting_loop_sleep_seconds: 2
+
+model_image_size_map: &model_imagesizes
+  tf_efficientdet_d1: [640, 640]
+  tf_efficientdet_d2: [768, 768]
+  tf_efficientdet_d4: [1024, 1024]
+  tf_efficientdet_d6: [1280, 1280]
+  tf_efficientdet_d7x: [1536, 1536]
+
+MAX_LOG_ENTRIES: &max-log-entries 100
+SLO_TIMEOUT: &slo-timeout 200 # TODO: change this
+QUIC_SHM_SIZE: &quic-shm-size 50000000
+
+# needed for ping loop
+DST_IP: &dst-ip 136.118.43.70
+
+main_client_config_list:
+  - service_id: 1
+    client_savedir: /home/hwei/experiment2-out/client
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    camera_bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service1-camera-socket
+    camera_stream_shmem_filename: service1-camera-shmem
+    bandwidth_allocation_incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/main-client-1-bw-subscriber
+    quic_rcv_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-outgoing-1
+    quic_snd_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-incoming-1
+    outgoing_zmq_diagnostic_sockname: ipc:///home/hwei/experiment2-out/zmq/car-client-diagnostics
+    camera_np_size: [1080, 1920, 3]
+    model_name_imagesize_map: *model_imagesizes
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/client-kill-1-switch
+    quic_snd_shm_filename: client-service1-incoming-shm
+    quic_rcv_shm_filename: client-service1-outgoing-shm
+    quic_shm_size: *quic-shm-size
+    SLO_TIMEOUT_MS: *slo-timeout
+  - service_id: 2
+    client_savedir: /home/hwei/experiment2-out/client
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    camera_bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service2-camera-socket
+    camera_stream_shmem_filename: service2-camera-shmem
+    bandwidth_allocation_incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/main-client-2-bw-subscriber
+    quic_rcv_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-outgoing-2
+    quic_snd_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-incoming-2
+    outgoing_zmq_diagnostic_sockname: ipc:///home/hwei/experiment2-out/zmq/car-client-diagnostics
+    camera_np_size: [1080, 1920, 3]
+    model_name_imagesize_map: *model_imagesizes
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/client-kill-2-switch
+    quic_snd_shm_filename: client-service2-incoming-shm
+    quic_rcv_shm_filename: client-service2-outgoing-shm
+    quic_shm_size: *quic-shm-size
+    SLO_TIMEOUT_MS: *slo-timeout
+  - service_id: 3
+    client_savedir: /home/hwei/experiment2-out/client
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    camera_bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service3-camera-socket
+    camera_stream_shmem_filename: service3-camera-shmem
+    bandwidth_allocation_incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/main-client-3-bw-subscriber
+    quic_rcv_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-outgoing-3
+    quic_snd_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-incoming-3
+    outgoing_zmq_diagnostic_sockname: ipc:///home/hwei/experiment2-out/zmq/car-client-diagnostics
+    camera_np_size: [1080, 1920, 3]
+    model_name_imagesize_map: *model_imagesizes
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/client-kill-3-switch
+    quic_snd_shm_filename: client-service3-incoming-shm
+    quic_rcv_shm_filename: client-service3-outgoing-shm
+    quic_shm_size: *quic-shm-size
+    SLO_TIMEOUT_MS: *slo-timeout
+
+bandwidth_allocator_config:
+  service_id_list: [1, 2, 3]
+  t_SLO: 150 #TODO: change this
+  parquet_eval_dir: /home/hwei/full-eval
+  model_info_csv_path: /home/hwei/turbo/experiment_model_info.csv
+  outgoing_zmq_diagnostic_sockname: ipc:///home/hwei/experiment2-out/zmq/car-client-diagnostics
+  outgoing_zmq_client_socknames:
+    - ipc:///home/hwei/experiment2-out/zmq/main-client-1-bw-subscriber
+    - ipc:///home/hwei/experiment2-out/zmq/main-client-2-bw-subscriber
+    - ipc:///home/hwei/experiment2-out/zmq/main-client-3-bw-subscriber
+  bidirectional_zmq_quic_sockname: ipc:///home/hwei/experiment2-out/zmq/car-server-bw-service
+  zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/bandwidth-allocator-kill-switch
+  bidirectional_zmq_ping_handler_sockname: ipc:///home/hwei/experiment2-out/zmq/ping-handler
+
+ping_handler_config:
+  dst_ip: *dst-ip
+  ping_savedir: /home/hwei/experiment2-out/client
+  max_entries: 100
+  thread_concurrency: 5
+  bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/ping-handler
+  zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/ping-handler-kill-switch
+
+camera_stream_config_list:
+  - camera_id: 1 # FRONT
+    camera_savedir: /home/hwei/experiment2-out/client
+    usb_id: 0
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service1-camera-socket
+    camera_stream_shmem_filename: service1-camera-shmem
+    shmem_buf_size: *quic-shm-size
+    camera_np_size: [1080, 1920, 3]
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/camera-kill-1-switch
+    mock_camera_image_path: null # set to a file path (e.g. mock_webcam_image.jpg) to use a static image instead of webcam
+  - camera_id: 2 # FRONT LEFT
+    camera_savedir: /home/hwei/experiment2-out/client
+    usb_id: 4 # TODO: CONFIGURE THIS
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service2-camera-socket
+    camera_stream_shmem_filename: service2-camera-shmem
+    shmem_buf_size: *quic-shm-size
+    camera_np_size: [1080, 1920, 3]
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/camera-kill-2-switch
+    mock_camera_image_path: null
+  - camera_id: 3 # FRONT RIGHT
+    camera_savedir: /home/hwei/experiment2-out/client
+    usb_id: 8 # TODO: CONFIGURE THIS
+    max_entries: *max-log-entries
+    thread_concurrency: 10
+    bidirectional_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/service3-camera-socket
+    camera_stream_shmem_filename: service3-camera-shmem
+    shmem_buf_size: *quic-shm-size
+    camera_np_size: [1080, 1920, 3]
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/camera-kill-3-switch
+    mock_camera_image_path: null
+
+main_plotter_config:
+# service 4 is for junk stream
+  plotting_loop_sleep_seconds: 2
+  zmq_incoming_diagnostic_name: ipc:///home/hwei/experiment2-out/zmq/car-client-diagnostics
+  bandwidth_allocation_plot_config:
+    service_id_list: [1, 2, 3]
+    window_size_x: 40
+    bw_min_y: -10
+    bw_max_y: null
+    utility_min_y: -.1
+    utility_max_y: 1.1
+    bw_x_major_loc: 15
+    bw_x_minor_loc: 5
+    bw_y_major_loc: 100
+    bw_y_minor_loc: 20
+    utility_x_major_loc: 15
+    utility_x_minor_loc: 5
+    utility_y_major_loc: .2
+    utility_y_minor_loc: .1
+
+  service_status_plot_config: 
+    - service_id: 1
+      window_size_x: 40
+      cnt_min_y: -3
+      cnt_max_y: null
+      rate_min_y: -.5
+      rate_max_y: 1.05
+      cnt_x_major_loc: 15
+      cnt_x_minor_loc: 5
+      cnt_y_major_loc: 30
+      cnt_y_minor_loc: 10
+      rate_x_major_loc: 15
+      rate_x_minor_loc: 5
+      rate_y_major_loc: .2
+      rate_y_minor_loc: .05
+    - service_id: 2
+      window_size_x: 40
+      cnt_min_y: -3
+      cnt_max_y: null
+      rate_min_y: -.5
+      rate_max_y: 1.05
+      cnt_x_major_loc: 15
+      cnt_x_minor_loc: 5
+      cnt_y_major_loc: 30
+      cnt_y_minor_loc: 10
+      rate_x_major_loc: 15
+      rate_x_minor_loc: 5
+      rate_y_major_loc: .2
+      rate_y_minor_loc: .05
+    - service_id: 3
+      window_size_x: 40
+      cnt_min_y: -3
+      cnt_max_y: null
+      rate_min_y: -.5
+      rate_max_y: 1.05
+      cnt_x_major_loc: 15
+      cnt_x_minor_loc: 5
+      cnt_y_major_loc: 30
+      cnt_y_minor_loc: 10
+      rate_x_major_loc: 15
+      rate_x_minor_loc: 5
+      rate_y_major_loc: .2
+      rate_y_minor_loc: .05
+  service_utilization_plot_config:
+    - service_id: 1
+      window_size_x: 40
+      min_y: -10
+      max_y: null
+      x_major_loc: 15
+      x_minor_loc: 5
+      y_major_loc: 100
+      y_minor_loc: 20
+    - service_id: 2
+      window_size_x: 40
+      min_y: -10
+      max_y: null
+      x_major_loc: 15
+      x_minor_loc: 5
+      y_major_loc: 100
+      y_minor_loc: 20
+    - service_id: 3
+      window_size_x: 40
+      min_y: -10
+      max_y: null
+      x_major_loc: 15
+      x_minor_loc: 5
+      y_major_loc: 100
+      y_minor_loc: 20
+    - service_id: 4
+      window_size_x: 40
+      min_y: -10
+      max_y: null
+      x_major_loc: 15
+      x_minor_loc: 5
+      y_major_loc: 100
+      y_minor_loc: 20
+

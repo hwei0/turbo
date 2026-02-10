@@ -1,0 +1,12 @@
+# Example configuration for web dashboard
+# Add this section to your existing client_config.yaml or create a separate config file
+
+web_dashboard_config:
+  # How often to broadcast plot updates to connected browsers (in seconds)
+  refresh_rate_seconds: 3.0
+  
+  # How often the plotting loop processes data and updates plots (in seconds)
+  plotting_loop_sleep_seconds: 1.0
+
+# You can also override these settings via command line:
+# python start_web_dashboard.py --refresh-rate 2.0 --plotting-sleep 0.5

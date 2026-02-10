@@ -1,0 +1,65 @@
+logging_config_filepath: /home/hwei/turbo/config/logging_config.yaml
+
+MAX_LOG_ENTRIES: &max-log-entries 100
+SHM_FILESIZE: &shm-filesize 50000000
+
+server_model_list: &model-list-ref
+  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d2-waymo-open-dataset/version_2/checkpoints/epoch=9-step=419700.ckpt
+    num_classes: 5
+    image_size: [768, 768]
+    base_model: "tf_efficientdet_d2"
+  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d4-waymo-open-dataset/version_0/checkpoints/epoch=9-step=839400.ckpt
+    num_classes: 5
+    image_size: [1024, 1024]
+    base_model: "tf_efficientdet_d4"
+  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d6-waymo-open-dataset/version_2/checkpoints/epoch=9-step=3357600.ckpt
+    num_classes: 5
+    image_size: [1280, 1280]
+    base_model: "tf_efficientdet_d6"
+  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d7x-waymo-open-dataset/version_1/checkpoints/epoch=8-step=1477071.ckpt
+    num_classes: 5
+    image_size: [1536, 1536]
+    base_model: "tf_efficientdet_d7x"
+
+
+server_config_list:
+  - service_id: 1
+    server_log_savedir: /home/hwei/experiment2-out/server
+    max_entries: *max-log-entries
+    model_metadata_list: *model-list-ref
+    device: "cuda:0"
+    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-1
+    incoming_shm_filename: server-service1-outgoing-shm
+    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-1
+    outgoing_shm_filename: server-service1-incoming-shm
+    thread_concurrency: 10
+    shm_filesize: *shm-filesize
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-1
+    mock_inference_output_path: null # set to a file path (e.g. example_effdet_d4_output.npz) to skip model loading and return mock detections
+  - service_id: 2
+    server_log_savedir: /home/hwei/experiment2-out/server
+    max_entries: *max-log-entries
+    model_metadata_list: *model-list-ref
+    device: "cuda:1"
+    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-2
+    incoming_shm_filename: server-service2-outgoing-shm
+    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-2
+    outgoing_shm_filename: server-service2-incoming-shm
+    thread_concurrency: 10
+    shm_filesize: *shm-filesize
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-2
+    mock_inference_output_path: null
+  - service_id: 3
+    server_log_savedir: /home/hwei/experiment2-out/server
+    max_entries: *max-log-entries
+    model_metadata_list: *model-list-ref
+    device: "cuda:2"
+    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-3
+    incoming_shm_filename: server-service3-outgoing-shm
+    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-3
+    outgoing_shm_filename: server-service3-incoming-shm
+    thread_concurrency: 10
+    shm_filesize: *shm-filesize
+    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-3
+    mock_inference_output_path: null
+  
