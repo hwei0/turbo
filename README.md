@@ -128,7 +128,9 @@ For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 2. <a id="model-setup"></a>**Download fine-tuned EfficientDet model checkpoints:**
 
-   The system uses custom EfficientDet models (D1, D2, D4, D6, D7x) fine-tuned on the [Waymo Open Dataset](https://waymo.com/open/) for 5-class object detection (vehicle, pedestrian, cyclist, sign, unknown). Download and extract them:
+   The system uses custom EfficientDet models (D1, D2, D4, D6, D7x) fine-tuned on the [Waymo Open Dataset](https://waymo.com/open/) for 5-class object detection (vehicle, pedestrian, cyclist, sign, unknown). 
+   
+   Our fine-tuned models can be downloaded and extracted as follows:
 
    ```bash
    # Download the model archive
@@ -139,6 +141,16 @@ For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
    ```
 
    After extraction, update the checkpoint paths in your server configuration file (`config/server_config_gcloud.yaml`) and model config (`src/python/model_server/model_config.yaml`) to point to the extracted checkpoint files. See [docs/MODELS.md](docs/MODELS.md) for detailed model information and configuration.
+
+   > **IMPORTANT — Waymo Open Dataset License Notice**
+   >
+   > The fine-tuned EfficientDet model weights provided above were developed using the [Waymo Open Dataset](https://waymo.com/open/) and are released under the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/). By downloading or using these model weights, you agree that:
+   >
+   > 1. These models are for **non-commercial use only**. Any use, modification, or redistribution is subject to the terms of the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/), including the non-commercial restrictions therein.
+   > 2. Any further downstream use or modification of these models is subject to the same agreement.
+   > 3. A statement of the applicable Waymo Dataset License terms is included in this repository at [WAYMO_LICENSE](WAYMO_LICENSE). The full agreement is available at [waymo.com/open/terms](https://waymo.com/open/terms/).
+   >
+   > These models were made using the Waymo Open Dataset, provided by Waymo LLC.
 
 3. **Generate SSL Keys for QUIC:**
    ```bash
@@ -342,7 +354,11 @@ We welcome contributions from the community! See [CONTRIBUTING.md](CONTRIBUTING.
 
 ## License
 
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+This project's source code is licensed under the Apache 2.0 License — see the [LICENSE](LICENSE) file for details.
+
+The fine-tuned EfficientDet model weights distributed with this project were developed using the [Waymo Open Dataset](https://waymo.com/open/) and are subject to the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/). These model weights are provided for **non-commercial purposes only**. Any use, modification, or redistribution of the model weights must comply with the Waymo Dataset License Agreement, including the non-commercial restrictions of Section 4. A statement of the applicable Waymo Dataset License terms is included at [WAYMO_LICENSE](WAYMO_LICENSE); the full agreement is available at [waymo.com/open/terms](https://waymo.com/open/terms/).
+
+These models were made using the Waymo Open Dataset, provided by Waymo LLC.
 
 ## Citation
 

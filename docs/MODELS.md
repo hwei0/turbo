@@ -1,5 +1,15 @@
 # Model Setup & Reference
 
+> **Waymo Open Dataset License Notice**
+>
+> The fine-tuned EfficientDet model weights described in this document were developed using the [Waymo Open Dataset](https://waymo.com/open/) and are released under the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/). By downloading or using these model weights, you agree that:
+>
+> 1. These models are for **non-commercial use only**. Any use, modification, or redistribution is subject to the terms of the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/), including the non-commercial restrictions therein.
+> 2. Any further downstream use or modification of these models is subject to the same agreement.
+> 3. A statement of the applicable Waymo Dataset License terms is included in this repository at [WAYMO_LICENSE](../WAYMO_LICENSE). The full agreement is available at [waymo.com/open/terms](https://waymo.com/open/terms/).
+>
+> These models were made using the Waymo Open Dataset, provided by Waymo LLC.
+
 This document covers the fine-tuned EfficientDet models used by TURBO for object detection, including download instructions, configuration, and inference pipeline details.
 
 ## Overview
