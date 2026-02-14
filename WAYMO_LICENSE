@@ -1,0 +1,57 @@
+Waymo Dataset License Agreement for Non-Commercial Use
+=======================================================
+
+The fine-tuned EfficientDet model weights distributed with this project
+("Distributed WOD Models") were developed using the Waymo Open Dataset
+and are subject to the Waymo Dataset License Agreement for Non-Commercial
+Use (the "Agreement").
+
+The full, canonical text of the Agreement is available at:
+
+    https://waymo.com/open/terms/
+
+By downloading, using, modifying, or redistributing the Distributed WOD
+Models included in this project, you agree to be bound by the terms of
+the Agreement. Key terms are summarized below for convenience, but the
+full Agreement at the URL above governs in all cases.
+
+
+NOTICE TO RECIPIENTS
+--------------------
+
+1. The Distributed WOD Models in this repository are released under the
+   Waymo Dataset License Agreement for Non-Commercial Use (the
+   "Agreement"), available at https://waymo.com/open/terms/.
+
+2. Any use, modification, or redistribution of the Distributed WOD Models
+   is subject to the terms of the Agreement, including the non-commercial
+   restrictions of Section 4. The Distributed WOD Models may only be used
+   for Non-commercial Purposes as defined in the Agreement.
+
+3. "Non-commercial Purposes" means research, teaching, scientific
+   publication, and personal experimentation. Non-commercial Purposes
+   expressly excludes use in operation of a vehicle, use in Production
+   Systems, or any use for which You receive monetary compensation.
+
+4. You may not distribute the Distributed WOD Models to any third party
+   except in compliance with the Agreement, and any such recipient must
+   also be bound by and comply with the Agreement.
+
+5. Upon use of any Distributed WOD Models for any purpose that is not a
+   Non-commercial Purpose, or is otherwise in breach of the Agreement,
+   any rights granted to you shall be null and void, and any rights
+   granted to third-party recipients are terminated automatically.
+
+
+ATTRIBUTION
+-----------
+
+These models were made using the Waymo Open Dataset, provided by Waymo LLC.
+
+For more information about the Waymo Open Dataset, visit:
+
+    https://waymo.com/open/
+
+For licensing inquiries, contact:
+
+    open-dataset@waymo.com
