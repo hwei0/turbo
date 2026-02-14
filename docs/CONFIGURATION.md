@@ -21,7 +21,11 @@ The config files make heavy use of **YAML anchors** (`&anchor-name`) and **refer
 
 ### IPC Socket Path Convention
 
-All ZMQ IPC socket paths follow the pattern `ipc://<zmq_pathdir>/<socket-name>`. The `zmq_pathdir` is set in the QUIC config, and all socket paths in the client/server configs must use the same base directory. See [IPC.md](IPC.md) for the full socket reference.
+ZMQ IPC socket names are stored as **bare names** (e.g., `service1-camera-socket`) in all YAML config files. The Python orchestrators (`client_main.py`, `server_main.py`) automatically resolve them to full `ipc://` paths using the `zmq_dir` directory specified in the config. For example, a bare name `service1-camera-socket` with `zmq_dir: /home/user/experiment-out/zmq` becomes `ipc:///home/user/experiment-out/zmq/service1-camera-socket`. See [IPC.md](IPC.md) for the full socket reference.
+
+### Auto-Generated Output Directories
+
+Save directories for logs (`client_savedir`, `camera_savedir`, `ping_savedir`, `server_log_savedir`) are **not specified in the YAML configs**. Instead, each orchestrator creates a timestamped run directory at startup under `experiment_output_dir` and injects the appropriate save path into each component's config. For example, `client_main.py` creates `experiment_output_dir/client_main_2024-01-15_10-30-00/client/` and sets that as the save directory for all client-side components. The QUIC binaries similarly create timestamped subdirectories (e.g., `experiment_output_dir/quic_client_2024-01-15_10-30-00/quic-client-out/`).
 
 ---
 
@@ -34,6 +38,10 @@ Configures the client-side (AV) components: camera streams, perception service c
 ```yaml
 logging_config_filepath: /path/to/turbo/config/logging_config.yaml
 
+experiment_output_dir: /path/to/experiment-out
+client_subdir: client
+zmq_dir: /path/to/experiment-out/zmq
+
 DST_IP: &dst-ip <YOUR_SERVER_IP>    # Cloud server IP for ICMP pings
 SLO_TIMEOUT: &slo-timeout 200       # Client-side SLO timeout (ms), shared via anchor
 QUIC_SHM_SIZE: &quic-shm-size 50000000  # Shared memory region size (bytes, ~50 MB)
@@ -43,6 +51,9 @@ MAX_LOG_ENTRIES: &max-log-entries 100    # Max records in memory before spilling
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `logging_config_filepath` | Yes | Absolute path to the Python logging config file |
+| `experiment_output_dir` | **Yes** | Base output directory. `client_main.py` creates a timestamped subdirectory here (e.g., `experiment-out/client_main_2024-01-15_10-30-00/`) for each run |
+| `client_subdir` | No | Subdirectory name within the timestamped run directory for client Parquet logs. Default `client` |
+| `zmq_dir` | **Yes** | Directory for ZMQ IPC socket files. Must match across client, server, and QUIC configs. Created automatically if it doesn't exist |
 | `DST_IP` | **Yes** | Public IP of your cloud server. Used by PingHandler for RTT measurement |
 | `SLO_TIMEOUT` | Maybe | Service-level objective timeout in ms. Frames exceeding this are dropped. Default `200` is suitable for most setups |
 | `QUIC_SHM_SIZE` | No | Size of each POSIX shared memory region in bytes. `50000000` (50 MB) is sufficient for HD frames |
@@ -81,39 +92,39 @@ One entry per perception service. Add or remove entries to match your number of 
 ```yaml
 main_client_config_list:
   - service_id: 1
-    client_savedir: /path/to/experiment-out/client
     max_entries: *max-log-entries
     thread_concurrency: 10
-    camera_bidirectional_zmq_sockname: ipc:///path/to/zmq/service1-camera-socket
+    camera_bidirectional_zmq_sockname: service1-camera-socket
     camera_stream_shmem_filename: service1-camera-shmem
-    bandwidth_allocation_incoming_zmq_sockname: ipc:///path/to/zmq/main-client-1-bw-subscriber
-    quic_rcv_zmq_sockname: ipc:///path/to/zmq/car-server-outgoing-1
-    quic_snd_zmq_sockname: ipc:///path/to/zmq/car-server-incoming-1
-    outgoing_zmq_diagnostic_sockname: ipc:///path/to/zmq/car-client-diagnostics
+    bandwidth_allocation_incoming_zmq_sockname: main-client-1-bw-subscriber
+    quic_rcv_zmq_sockname: car-server-outgoing-1
+    quic_snd_zmq_sockname: car-server-incoming-1
+    outgoing_zmq_diagnostic_sockname: car-client-diagnostics
     camera_np_size: [1080, 1920, 3]
     model_name_imagesize_map: *model_imagesizes
-    zmq_kill_switch_sockname: ipc:///path/to/zmq/client-kill-1-switch
+    zmq_kill_switch_sockname: client-kill-1-switch
     quic_snd_shm_filename: client-service1-incoming-shm
     quic_rcv_shm_filename: client-service1-outgoing-shm
     quic_shm_size: *quic-shm-size
     SLO_TIMEOUT_MS: *slo-timeout
 ```
 
+**Note**: `client_savedir` is not specified in the YAML. It is automatically injected by `client_main.py` using the timestamped run directory.
+
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `service_id` | Yes (if adding/removing services) | Unique integer ID for this service. Must match across client, server, and QUIC configs |
-| `client_savedir` | **Yes** | Directory for client-side Parquet log output. Must exist and be writable |
 | `max_entries` | No | Log buffer size before spilling to Parquet (uses global anchor) |
 | `thread_concurrency` | No | Number of threads in the client's thread pool. Default `10` is suitable for most setups |
-| `camera_bidirectional_zmq_sockname` | Yes (path) | ZMQ REQ/REP socket to the CameraDataStream for this service. Replace path prefix with your `zmq_pathdir` |
+| `camera_bidirectional_zmq_sockname` | No | Bare ZMQ socket name for the CameraDataStream. Auto-resolved to `ipc://<zmq_dir>/<name>` by `client_main.py` |
 | `camera_stream_shmem_filename` | No | POSIX SHM region name for raw camera frames. Must match the corresponding camera stream entry |
-| `bandwidth_allocation_incoming_zmq_sockname` | Yes (path) | ZMQ SUB socket to receive bandwidth allocation updates from the BandwidthAllocator |
-| `quic_rcv_zmq_sockname` | Yes (path) | ZMQ socket for sending compressed images to the QUIC client |
-| `quic_snd_zmq_sockname` | Yes (path) | ZMQ socket for receiving inference results from the QUIC client |
-| `outgoing_zmq_diagnostic_sockname` | Yes (path) | ZMQ PUB socket for sending diagnostic messages to the plotter. All services share the same socket name |
+| `bandwidth_allocation_incoming_zmq_sockname` | No | Bare ZMQ socket name for receiving bandwidth allocation updates from the BandwidthAllocator |
+| `quic_rcv_zmq_sockname` | No | Bare ZMQ socket name for sending compressed images to the QUIC client |
+| `quic_snd_zmq_sockname` | No | Bare ZMQ socket name for receiving inference results from the QUIC client |
+| `outgoing_zmq_diagnostic_sockname` | No | Bare ZMQ socket name for diagnostic messages to the plotter. All services share the same name |
 | `camera_np_size` | Maybe | Camera frame dimensions as `[height, width, channels]`. Change if your cameras produce a different resolution |
 | `model_name_imagesize_map` | No | Reference to the global model image size map (uses anchor) |
-| `zmq_kill_switch_sockname` | Yes (path) | ZMQ SUB socket for receiving graceful shutdown signals from `client_main.py` |
+| `zmq_kill_switch_sockname` | No | Bare ZMQ socket name for receiving graceful shutdown signals from `client_main.py` |
 | `quic_snd_shm_filename` | No | POSIX SHM region name for outgoing images to QUIC |
 | `quic_rcv_shm_filename` | No | POSIX SHM region name for incoming results from QUIC |
 | `quic_shm_size` | No | Size of the QUIC shared memory regions (uses global anchor) |
@@ -129,14 +140,14 @@ bandwidth_allocator_config:
   t_SLO: 150
   parquet_eval_dir: /path/to/full-eval
   model_info_csv_path: /path/to/turbo/experiment_model_info.csv
-  outgoing_zmq_diagnostic_sockname: ipc:///path/to/zmq/car-client-diagnostics
+  outgoing_zmq_diagnostic_sockname: car-client-diagnostics
   outgoing_zmq_client_socknames:
-    - ipc:///path/to/zmq/main-client-1-bw-subscriber
-    - ipc:///path/to/zmq/main-client-2-bw-subscriber
-    - ipc:///path/to/zmq/main-client-3-bw-subscriber
-  bidirectional_zmq_quic_sockname: ipc:///path/to/zmq/car-server-bw-service
-  zmq_kill_switch_sockname: ipc:///path/to/zmq/bandwidth-allocator-kill-switch
-  bidirectional_zmq_ping_handler_sockname: ipc:///path/to/zmq/ping-handler
+    - main-client-1-bw-subscriber
+    - main-client-2-bw-subscriber
+    - main-client-3-bw-subscriber
+  bidirectional_zmq_quic_sockname: car-server-bw-service
+  zmq_kill_switch_sockname: bandwidth-allocator-kill-switch
+  bidirectional_zmq_ping_handler_sockname: ping-handler
 ```
 
 | Parameter | Must customize? | Description |
@@ -145,11 +156,11 @@ bandwidth_allocator_config:
 | `t_SLO` | Maybe | Latency SLO constraint used by the LP solver (ms). Should be slightly tighter than `SLO_TIMEOUT` to account for processing overhead |
 | `parquet_eval_dir` | **Yes** | Path to directory containing pre-computed utility curve Parquet files. These are generated offline and encode the bandwidth-to-accuracy mapping for each model configuration |
 | `model_info_csv_path` | **Yes** | Path to `experiment_model_info.csv`, which maps model configuration strings to transport size (Mb) and runtime (ms) |
-| `outgoing_zmq_diagnostic_sockname` | Yes (path) | ZMQ PUB socket for allocation diagnostics. Should match the diagnostic socket used by clients |
-| `outgoing_zmq_client_socknames` | Yes (path) | List of ZMQ PUB sockets, one per service. Each must match the corresponding client's `bandwidth_allocation_incoming_zmq_sockname` |
-| `bidirectional_zmq_quic_sockname` | Yes (path) | ZMQ REP socket for receiving bandwidth/RTT updates from the QUIC client |
-| `zmq_kill_switch_sockname` | Yes (path) | ZMQ SUB socket for graceful shutdown |
-| `bidirectional_zmq_ping_handler_sockname` | Yes (path) | ZMQ REQ socket for querying RTT from the PingHandler |
+| `outgoing_zmq_diagnostic_sockname` | No | Bare ZMQ socket name for allocation diagnostics. Should match the diagnostic socket used by clients |
+| `outgoing_zmq_client_socknames` | No | List of bare ZMQ socket names, one per service. Each must match the corresponding client's `bandwidth_allocation_incoming_zmq_sockname` |
+| `bidirectional_zmq_quic_sockname` | No | Bare ZMQ socket name for receiving bandwidth/RTT updates from the QUIC client |
+| `zmq_kill_switch_sockname` | No | Bare ZMQ socket name for graceful shutdown |
+| `bidirectional_zmq_ping_handler_sockname` | No | Bare ZMQ socket name for querying RTT from the PingHandler |
 
 ### Camera Stream Configuration (`camera_stream_config_list`)
 
@@ -158,30 +169,30 @@ One entry per USB camera. Must have a matching entry in `main_client_config_list
 ```yaml
 camera_stream_config_list:
   - camera_id: 1                     # Must match service_id
-    camera_savedir: /path/to/experiment-out/client
     usb_id: 0                        # USB device index
     max_entries: *max-log-entries
     thread_concurrency: 10
-    bidirectional_zmq_sockname: ipc:///path/to/zmq/service1-camera-socket
+    bidirectional_zmq_sockname: service1-camera-socket
     camera_stream_shmem_filename: service1-camera-shmem
     shmem_buf_size: *quic-shm-size
     camera_np_size: [1080, 1920, 3]
-    zmq_kill_switch_sockname: ipc:///path/to/zmq/camera-kill-1-switch
-    mock_camera_image_path: null
+    zmq_kill_switch_sockname: camera-kill-1-switch
+    mock_camera_image_path: mock_webcam_image.jpg  # set to null for live camera
 ```
+
+**Note**: `camera_savedir` is not specified in the YAML. It is automatically injected by `client_main.py` using the timestamped run directory.
 
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `camera_id` | Yes (if adding/removing services) | Must match the `service_id` of the corresponding client entry |
-| `camera_savedir` | **Yes** | Directory for camera Parquet log output |
 | `usb_id` | **Yes** | USB camera device index for `cv2.VideoCapture`. Run `ls /dev/video*` to identify your cameras. These indices vary by system |
 | `max_entries` | No | Log buffer size (uses global anchor) |
 | `thread_concurrency` | No | Thread pool size for camera operations |
-| `bidirectional_zmq_sockname` | Yes (path) | ZMQ REP socket for client communication. Must match the corresponding client's `camera_bidirectional_zmq_sockname` |
+| `bidirectional_zmq_sockname` | No | Bare ZMQ socket name for client communication. Must match the corresponding client's `camera_bidirectional_zmq_sockname` |
 | `camera_stream_shmem_filename` | No | SHM region name. Must match the corresponding client's `camera_stream_shmem_filename` |
 | `shmem_buf_size` | No | SHM buffer size in bytes (uses global anchor) |
 | `camera_np_size` | Maybe | Camera frame dimensions `[height, width, channels]`. Must match the client entry |
-| `zmq_kill_switch_sockname` | Yes (path) | ZMQ SUB socket for graceful shutdown |
+| `zmq_kill_switch_sockname` | No | Bare ZMQ socket name for graceful shutdown |
 | `mock_camera_image_path` | Maybe | Set to a file path (e.g., `mock_webcam_image.jpg`) to use a static image instead of a live webcam. Useful for testing without hardware. Set to `null` for live camera |
 
 ### Ping Handler Configuration (`ping_handler_config`)
@@ -189,21 +200,21 @@ camera_stream_config_list:
 ```yaml
 ping_handler_config:
   dst_ip: *dst-ip
-  ping_savedir: /path/to/experiment-out/client
   max_entries: 100
   thread_concurrency: 5
-  bidirectional_zmq_sockname: ipc:///path/to/zmq/ping-handler
-  zmq_kill_switch_sockname: ipc:///path/to/zmq/ping-handler-kill-switch
+  bidirectional_zmq_sockname: ping-handler
+  zmq_kill_switch_sockname: ping-handler-kill-switch
 ```
+
+**Note**: `ping_savedir` is not specified in the YAML. It is automatically injected by `client_main.py` using the timestamped run directory.
 
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `dst_ip` | **Yes** | IP address to ping for RTT measurement. Should be your cloud server's public IP (uses global `DST_IP` anchor) |
-| `ping_savedir` | **Yes** | Directory for ping log Parquet output |
 | `max_entries` | No | Log buffer size |
 | `thread_concurrency` | No | Thread pool size |
-| `bidirectional_zmq_sockname` | Yes (path) | ZMQ REP socket. Must match the bandwidth allocator's `bidirectional_zmq_ping_handler_sockname` |
-| `zmq_kill_switch_sockname` | Yes (path) | ZMQ SUB socket for graceful shutdown |
+| `bidirectional_zmq_sockname` | No | Bare ZMQ socket name. Must match the bandwidth allocator's `bidirectional_zmq_ping_handler_sockname` |
+| `zmq_kill_switch_sockname` | No | Bare ZMQ socket name for graceful shutdown |
 
 ### Diagnostic Plotter Configuration (`main_plotter_config`)
 
@@ -212,7 +223,7 @@ Configures the real-time matplotlib diagnostic plots. This section is optional â
 ```yaml
 main_plotter_config:
   plotting_loop_sleep_seconds: 2
-  zmq_incoming_diagnostic_name: ipc:///path/to/zmq/car-client-diagnostics
+  zmq_incoming_diagnostic_name: car-client-diagnostics
   bandwidth_allocation_plot_config:
     service_id_list: [1, 2, 3]
     window_size_x: 40               # X-axis window size (seconds of data shown)
@@ -261,7 +272,7 @@ main_plotter_config:
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `plotting_loop_sleep_seconds` | No | Sleep interval between plot updates |
-| `zmq_incoming_diagnostic_name` | Yes (path) | ZMQ SUB socket for receiving diagnostics from clients, bandwidth allocator, and QUIC. Must match `outgoing_zmq_diagnostic_sockname` used by other components |
+| `zmq_incoming_diagnostic_name` | No | Bare ZMQ socket name for receiving diagnostics from clients, bandwidth allocator, and QUIC. Must match `outgoing_zmq_diagnostic_sockname` used by other components |
 | `bandwidth_allocation_plot_config` | No | Plot layout for the bandwidth allocation overview. Adjust `window_size_x` to show more or less history |
 | `service_status_plot_config` | Yes (if adding/removing services) | One entry per service. Adjust to match your `service_id_list` |
 | `service_utilization_plot_config` | Yes (if adding/removing services) | One entry per service including junk service (service 4). Adjust to match your services list |
@@ -277,6 +288,10 @@ Configures the server-side (cloud) components: model servers and GPU assignments
 ```yaml
 logging_config_filepath: /path/to/turbo/config/logging_config.yaml
 
+experiment_output_dir: /path/to/experiment-out
+server_subdir: server
+zmq_dir: /path/to/experiment-out/zmq
+
 MAX_LOG_ENTRIES: &max-log-entries 100
 SHM_FILESIZE: &shm-filesize 50000000
 ```
@@ -284,6 +299,9 @@ SHM_FILESIZE: &shm-filesize 50000000
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `logging_config_filepath` | Yes | Absolute path to the Python logging config file |
+| `experiment_output_dir` | **Yes** | Base output directory. `server_main.py` creates a timestamped subdirectory here (e.g., `experiment-out/server_main_2024-01-15_10-30-00/`) for each run |
+| `server_subdir` | No | Subdirectory name within the timestamped run directory for server Parquet logs. Default `server` |
+| `zmq_dir` | **Yes** | Directory for ZMQ IPC socket files. Must match across client, server, and QUIC configs. Created automatically if it doesn't exist |
 | `MAX_LOG_ENTRIES` | No | Log buffer size before spilling to Parquet |
 | `SHM_FILESIZE` | No | Shared memory region size in bytes (~50 MB) |
 
@@ -325,35 +343,37 @@ One entry per perception service. Add or remove entries to match your number of 
 ```yaml
 server_config_list:
   - service_id: 1
-    server_log_savedir: /path/to/experiment-out/server
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
     device: "cuda:0"
-    incoming_zmq_sockname: ipc:///path/to/zmq/remote-server-outgoing-1
+    incoming_zmq_sockname: remote-server-outgoing-1
     incoming_shm_filename: server-service1-outgoing-shm
-    outgoing_zmq_sockname: ipc:///path/to/zmq/remote-server-incoming-1
+    outgoing_zmq_sockname: remote-server-incoming-1
     outgoing_shm_filename: server-service1-incoming-shm
     thread_concurrency: 10
     shm_filesize: *shm-filesize
-    zmq_kill_switch_sockname: ipc:///path/to/zmq/remote-server-kill-switch-1
+    zmq_kill_switch_sockname: remote-server-kill-switch-1
     mock_inference_output_path: null
+    mock_model_latency_csv_path: null
 ```
+
+**Note**: `server_log_savedir` is not specified in the YAML. It is automatically injected by `server_main.py` using the timestamped run directory.
 
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
 | `service_id` | Yes (if adding/removing services) | Unique integer ID. Must match the corresponding client-side service |
-| `server_log_savedir` | **Yes** | Directory for server-side Parquet log output. Must exist and be writable |
 | `max_entries` | No | Log buffer size (uses global anchor) |
 | `model_metadata_list` | No | Reference to `server_model_list` (uses YAML anchor). All servers share the same model list |
 | `device` | **Yes** | PyTorch device string (e.g., `cuda:0`, `cuda:1`, `cpu`). Assign a different GPU to each service for parallelism. Run `nvidia-smi` to see available GPUs |
-| `incoming_zmq_sockname` | Yes (path) | ZMQ REP socket for receiving images from the QUIC server |
+| `incoming_zmq_sockname` | No | Bare ZMQ socket name for receiving images from the QUIC server. Auto-resolved to `ipc://<zmq_dir>/<name>` by `server_main.py` |
 | `incoming_shm_filename` | No | SHM region name for incoming image data |
-| `outgoing_zmq_sockname` | Yes (path) | ZMQ REQ socket for sending inference results back to the QUIC server |
+| `outgoing_zmq_sockname` | No | Bare ZMQ socket name for sending inference results back to the QUIC server |
 | `outgoing_shm_filename` | No | SHM region name for outgoing inference results |
 | `thread_concurrency` | No | Thread pool size for server operations |
 | `shm_filesize` | No | SHM region size in bytes (uses global anchor) |
-| `zmq_kill_switch_sockname` | Yes (path) | ZMQ SUB socket for graceful shutdown from `server_main.py` |
+| `zmq_kill_switch_sockname` | No | Bare ZMQ socket name for graceful shutdown from `server_main.py` |
 | `mock_inference_output_path` | Maybe | Set to a `.npz` file path (e.g., `example_effdet_d4_output.npz`) to skip model loading and return pre-recorded detections. Useful for testing without a GPU. Set to `null` for real inference |
+| `mock_model_latency_csv_path` | Maybe | Set to the `experiment_model_info.csv` path to simulate per-model inference latency in mock mode. Only used when `mock_inference_output_path` is set. Set to `null` to skip latency simulation |
 
 ---
 
@@ -364,7 +384,11 @@ Configures the QUIC transport layer (Rust binaries: `quic_client` and `quic_serv
 ### Paths and Timing
 
 ```yaml
-zmq_pathdir: "/path/to/experiment-out/zmq"
+experiment_output_dir: "/path/to/experiment-out"
+zmq_dir: "/path/to/experiment-out/zmq"
+quic_client_log_subdir: quic-client-out
+quic_server_log_subdir: quic-server-out
+
 slo_timeout_ms: 100
 junk_tx_loop_interval_ms: 100
 logging_interval_ms: 500
@@ -377,7 +401,10 @@ junk_restart_interval_ms: 500
 
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
-| `zmq_pathdir` | **Yes** | Base directory for all ZMQ IPC socket files. Must match the path prefix used in all `ipc://` socket paths in client and server configs. This directory must exist before starting |
+| `experiment_output_dir` | **Yes** | Base output directory. The QUIC client/server creates a timestamped subdirectory here (e.g., `experiment-out/quic_client_2024-01-15_10-30-00/`) for each run. Must match the value used in client and server Python configs |
+| `zmq_dir` | **Yes** | Directory for ZMQ IPC socket files. Must match across client, server, and QUIC configs. The QUIC binaries assert this directory exists before starting |
+| `quic_client_log_subdir` | No | Subdirectory name within the timestamped run directory for QUIC client Parquet logs. Default `quic-client-out` |
+| `quic_server_log_subdir` | No | Subdirectory name within the timestamped run directory for QUIC server Parquet logs. Default `quic-server-out` |
 | `slo_timeout_ms` | Maybe | Timeout for dropping stale queued frames in the QUIC send loop (ms). Should be aligned with `SLO_TIMEOUT` in the client config. Frames older than this are silently dropped from the LIFO queue |
 | `junk_tx_loop_interval_ms` | No | Interval between junk service transmissions (ms). Lower values probe bandwidth more aggressively. Cloud config uses `7`, client config uses `100` |
 | `logging_interval_ms` | No | How often network statistics are logged to Parquet (ms) |
@@ -398,18 +425,6 @@ enable_junk_service: True
 |-----------|:-:|---|
 | `services` | Yes (if adding/removing services) | List of all service IDs. If `enable_junk_service` is `True`, the highest ID is the junk service and should not appear in the client's `service_id_list` |
 | `enable_junk_service` | Maybe | If `True`, the last service in the list sends dummy data to probe available bandwidth. Recommended `True` for accurate bandwidth estimation |
-
-### Logging Paths
-
-```yaml
-quic_client_log_path: "/path/to/experiment-out/quic-client-out"
-quic_server_log_path: "/path/to/experiment-out/quic-server-out"
-```
-
-| Parameter | Must customize? | Description |
-|-----------|:-:|---|
-| `quic_client_log_path` | **Yes** | Output directory for QUIC client Parquet logs. Must exist and be writable |
-| `quic_server_log_path` | **Yes** | Output directory for QUIC server Parquet logs. Must exist and be writable |
 
 ### Logging Flags (Client-side QUIC)
 
@@ -454,20 +469,18 @@ When deploying the system, work through this checklist to ensure all paths and p
 
 ### 1. Choose an output directory
 
-All components write logs and IPC socket files to a shared output directory tree. Create it first:
+All components write logs and IPC socket files to a shared output directory tree. Set `experiment_output_dir` and `zmq_dir` consistently across all four config files. The orchestrators automatically create timestamped run subdirectories and ZMQ directories at startup â€” you only need the base directory to exist (or be creatable):
 
 ```bash
-mkdir -p ~/experiment-out/{zmq,client,server,quic-client-out,quic-server-out}
+mkdir -p ~/experiment-out
 ```
-
-Then update all path references in all four config files to use your chosen directory.
 
 ### 2. Client-side (`client_config.yaml`)
 
 - [ ] `logging_config_filepath` points to `config/logging_config.yaml` (absolute path)
+- [ ] `experiment_output_dir` is set to your chosen output directory
+- [ ] `zmq_dir` is set (e.g., `~/experiment-out/zmq`) and matches all other configs
 - [ ] `DST_IP` is set to your cloud server's public IP address
-- [ ] All `ipc://` socket paths use your output directory (e.g., `ipc:///home/you/experiment-out/zmq/...`)
-- [ ] `client_savedir` and `camera_savedir` point to writable log directories
 - [ ] `parquet_eval_dir` points to the directory containing pre-computed utility curve Parquet files
 - [ ] `model_info_csv_path` points to the `experiment_model_info.csv` file
 - [ ] `camera_stream_config_list[].usb_id` matches your USB camera device IDs (run `ls /dev/video*`)
@@ -479,24 +492,25 @@ Then update all path references in all four config files to use your chosen dire
 ### 3. Server-side (`server_config_gcloud.yaml`)
 
 - [ ] `logging_config_filepath` points to `config/logging_config.yaml` (absolute path)
+- [ ] `experiment_output_dir` is set to your chosen output directory (same as client config)
+- [ ] `zmq_dir` matches all other configs
 - [ ] `server_model_list[].checkpoint_path` points to valid EfficientDet `.ckpt` files (see [MODELS.md](MODELS.md))
 - [ ] `server_config_list[].device` assigns a unique GPU to each service (e.g., `cuda:0`, `cuda:1`, `cuda:2`)
-- [ ] All `ipc://` socket paths use the same base directory as the QUIC config's `zmq_pathdir`
-- [ ] `server_log_savedir` points to a writable log directory
 - [ ] Number of entries in `server_config_list` matches the number of real services (not including junk)
-- [ ] If testing without a GPU: set `mock_inference_output_path` to a `.npz` file path
+- [ ] If testing without a GPU: set `mock_inference_output_path` to a `.npz` file path and optionally set `mock_model_latency_csv_path` to simulate per-model latency
 
 ### 4. QUIC configs (`quic_config_client.yaml` and `quic_config_gcloud.yaml`)
 
-- [ ] `zmq_pathdir` matches the base directory used in all `ipc://` paths in client and server configs
+- [ ] `experiment_output_dir` matches the value in client and server configs
+- [ ] `zmq_dir` matches all other configs
 - [ ] `services` list includes all active service IDs plus the junk service (e.g., `[1, 2, 3, 4]`)
-- [ ] `quic_client_log_path` and `quic_server_log_path` point to writable directories
 - [ ] `slo_timeout_ms` is aligned with `SLO_TIMEOUT` in the client config
 - [ ] Both client and server QUIC configs have the same `services` list
 
 ### 5. Cross-config consistency
 
-- [ ] The `zmq_pathdir` in QUIC configs matches the path prefix of all `ipc://` sockets in client and server configs
+- [ ] `experiment_output_dir` is the same across all four config files
+- [ ] `zmq_dir` is the same across all four config files
 - [ ] The `services` list in QUIC configs includes all `service_id` values from client and server configs, plus the junk service
 - [ ] The `SLO_TIMEOUT` (client) and `slo_timeout_ms` (QUIC) are aligned
 - [ ] SHM filenames in client config match what the QUIC binaries expect (follow the naming convention `client-service{N}-incoming-shm` / `client-service{N}-outgoing-shm`)

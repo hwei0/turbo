@@ -62,6 +62,7 @@ class ModelServerConfig(BaseModel):
     shm_filesize: int
     zmq_kill_switch_sockname: str
     mock_inference_output_path: Optional[str] = None
+    mock_model_latency_csv_path: Optional[str] = None
 
 
 MODEL_SERVER_STORE_SCHEMA = {
@@ -273,9 +274,17 @@ class ModelServer:
                 raise ConfigurationError(f"Mock inference output file not found: {mock_path}")
             self.mock_result = np.fromfile(str(mock_path), dtype=np.float32)
 
-            # TODO: use actual model benchmarks to tune this magic number.
-            mock_sleep_time = .50 # sleep for 50 ms
-            time.sleep(mock_sleep_time)
+            # Load model latency benchmarks from CSV for realistic per-request mock timing
+            self.mock_latency_map = {}
+            if config.mock_model_latency_csv_path is not None:
+                csv_path = Path(config.mock_model_latency_csv_path)
+                if not csv_path.exists():
+                    raise ConfigurationError(f"Mock model latency CSV not found: {csv_path}")
+                df = pl.read_csv(str(csv_path))
+                for row in df.iter_rows(named=True):
+                    self.mock_latency_map[row["Model"]] = row["Runtime [ms]"] / 1000.0
+                LOGGER.info("ModelServer %d: Loaded mock latency map with %d entries",
+                            self.service_id, len(self.mock_latency_map))
 
             LOGGER.info("ModelServer %d: Mock mode enabled, loaded mock output from %s (shape=%s)",
                         self.service_id, mock_path, self.mock_result.shape)
@@ -441,7 +450,17 @@ class ModelServer:
 
             if self.mock_mode:
                 preprocessing_latency = 0.0
-                inference_latency = 0.0
+
+                mock_sleep_secs = self.mock_latency_map.get(recv_obj.requested_processing)
+                if mock_sleep_secs is not None:
+                    time.sleep(mock_sleep_secs)
+                else:
+                    LOGGER.warning(
+                        "ModelServer %d: No latency entry for '%s' in mock latency map, skipping sleep",
+                        self.service_id, recv_obj.requested_processing
+                    )
+
+                inference_latency = time.perf_counter() - start_time - deserialization_polling_latency
                 result_numpy = self.mock_result
             else:
                 this_image = recv_obj.input_image

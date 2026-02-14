@@ -1,5 +1,9 @@
 logging_config_filepath: /home/hwei/turbo/config/logging_config.yaml
 
+experiment_output_dir: /home/hwei/experiment2-out
+server_subdir: server
+zmq_dir: /home/hwei/experiment2-out/zmq
+
 MAX_LOG_ENTRIES: &max-log-entries 100
 SHM_FILESIZE: &shm-filesize 50000000
 
@@ -24,42 +28,41 @@ server_model_list: &model-list-ref
 
 server_config_list:
   - service_id: 1
-    server_log_savedir: /home/hwei/experiment2-out/server
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
     device: "cuda:0"
-    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-1
+    incoming_zmq_sockname: remote-server-outgoing-1
     incoming_shm_filename: server-service1-outgoing-shm
-    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-1
+    outgoing_zmq_sockname: remote-server-incoming-1
     outgoing_shm_filename: server-service1-incoming-shm
     thread_concurrency: 10
     shm_filesize: *shm-filesize
-    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-1
+    zmq_kill_switch_sockname: remote-server-kill-switch-1
     mock_inference_output_path: null # set to a file path (e.g. example_effdet_d4_output.npz) to skip model loading and return mock detections
+    mock_model_latency_csv_path: null # set to experiment_model_info.csv path to simulate per-model inference latency in mock mode
   - service_id: 2
-    server_log_savedir: /home/hwei/experiment2-out/server
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
     device: "cuda:1"
-    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-2
+    incoming_zmq_sockname: remote-server-outgoing-2
     incoming_shm_filename: server-service2-outgoing-shm
-    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-2
+    outgoing_zmq_sockname: remote-server-incoming-2
     outgoing_shm_filename: server-service2-incoming-shm
     thread_concurrency: 10
     shm_filesize: *shm-filesize
-    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-2
+    zmq_kill_switch_sockname: remote-server-kill-switch-2
     mock_inference_output_path: null
+    mock_model_latency_csv_path: null
   - service_id: 3
-    server_log_savedir: /home/hwei/experiment2-out/server
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
     device: "cuda:2"
-    incoming_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-outgoing-3
+    incoming_zmq_sockname: remote-server-outgoing-3
     incoming_shm_filename: server-service3-outgoing-shm
-    outgoing_zmq_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-incoming-3
+    outgoing_zmq_sockname: remote-server-incoming-3
     outgoing_shm_filename: server-service3-incoming-shm
     thread_concurrency: 10
     shm_filesize: *shm-filesize
-    zmq_kill_switch_sockname: ipc:///home/hwei/experiment2-out/zmq/remote-server-kill-switch-3
+    zmq_kill_switch_sockname: remote-server-kill-switch-3
     mock_inference_output_path: null
-  
+    mock_model_latency_csv_path: null

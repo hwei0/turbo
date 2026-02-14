@@ -27,6 +27,7 @@ env_logger = {workspace = true}
 config = {workspace = true}
 libc = {workspace = true}
 ctrlc = {workspace = true}
+chrono = {workspace = true}
 quic_conn = {path = "../quic_conn"}
 
 
