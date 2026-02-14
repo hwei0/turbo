@@ -45,7 +45,12 @@ pub static CERT_PEM: &str =
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        error!("Panic: {}\n{}", panic_info, backtrace);
+    }));
     info!("QUIC client starting");
 
     let args: Vec<String> = env::args().collect();

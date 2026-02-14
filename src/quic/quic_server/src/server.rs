@@ -11,7 +11,7 @@
 
 use atomic_float::AtomicF64;
 use config::{Config, File};
-use log::{debug, info};
+use log::{debug, error, info};
 use s2n_quic::provider::congestion_controller::Bbr;
 use s2n_quic::{stream::BidirectionalStream, Server};
 use std::env;
@@ -37,7 +37,12 @@ use quic_conn::utils::{quic_config::QuicConfig, tokio_context::TokioContext};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        error!("Panic: {}\n{}", panic_info, backtrace);
+    }));
 
     let recovery_ptr = Arc::new(RecoverySnapshot {
         rtt: AtomicF64::new(5.),

@@ -272,7 +272,7 @@ class ModelServer:
             mock_path = Path(config.mock_inference_output_path)
             if not mock_path.exists():
                 raise ConfigurationError(f"Mock inference output file not found: {mock_path}")
-            self.mock_result = np.fromfile(str(mock_path), dtype=np.float32)
+            self.mock_result = np.load(str(mock_path))
 
             # Load model latency benchmarks from CSV for realistic per-request mock timing
             self.mock_latency_map = {}
@@ -282,6 +282,8 @@ class ModelServer:
                     raise ConfigurationError(f"Mock model latency CSV not found: {csv_path}")
                 df = pl.read_csv(str(csv_path))
                 for row in df.iter_rows(named=True):
+                    if row["Model"] is None or row["Runtime [ms]"] is None:
+                        continue
                     self.mock_latency_map[row["Model"]] = row["Runtime [ms]"] / 1000.0
                 LOGGER.info("ModelServer %d: Loaded mock latency map with %d entries",
                             self.service_id, len(self.mock_latency_map))

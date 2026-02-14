@@ -32,6 +32,7 @@ import logging.config
 from logging import FileHandler
 from pathlib import Path
 import signal
+import traceback
 import yaml
 from multiprocessing import Pool, Queue, Pipe
 import time
@@ -113,7 +114,8 @@ if __name__ == "__main__":
         def err_callback(err):
             """Handle process pool errors by sending ABORT to all processes."""
             global early_abort
-            logger.error("Process error: %s: %s", type(err).__name__, err)
+            tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+            logger.error("Process error: %s: %s\n%s", type(err).__name__, err, tb)
             # for ks in kill_switches:
             #     ks.send_string("ABORT")
             early_abort = True
