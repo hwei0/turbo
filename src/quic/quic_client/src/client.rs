@@ -45,7 +45,12 @@ pub static CERT_PEM: &str =
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        error!("Panic: {}\n{}", panic_info, backtrace);
+    }));
     info!("QUIC client starting");
 
     let args: Vec<String> = env::args().collect();
@@ -64,9 +69,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .add_source(File::with_name(file_path))
         .build()?;
 
-    let binding = config.get_string("quic_client_log_path")?.clone();
-    let quic_client_log_dir = Path::new(&binding);
-    assert!(quic_client_log_dir.exists() && quic_client_log_dir.is_dir());
+    let experiment_output_dir = config.get_string("experiment_output_dir")?;
+    let quic_client_log_subdir = config.get_string("quic_client_log_subdir")?;
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+    let quic_client_log_path_buf = Path::new(&experiment_output_dir)
+        .join(format!("quic_client_{}", timestamp))
+        .join(&quic_client_log_subdir);
+    std::fs::create_dir_all(&quic_client_log_path_buf)?;
+    let quic_client_log_dir = quic_client_log_path_buf.as_path();
 
     let bw_stat_log_capacity = config.get_int("bw_stat_log_capacity")? as usize;
     let _allocation_stat_log_capacity = config.get_int("allocation_stat_log_capacity")? as usize;
@@ -84,20 +94,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let enable_junk_service: bool = config.get_bool("enable_junk_service")?;
 
     let quic_config = QuicConfig::read_from_config(config);
-    let (timing_config, init_allocation, zmq_pathdir, services) = (
+    let (timing_config, init_allocation, zmq_dir, services) = (
         quic_config.timing_config,
         quic_config.init_allocation,
-        quic_config.zmq_pathdir,
+        quic_config.zmq_dir,
         quic_config.services,
     );
 
-    assert!(Path::new(&zmq_pathdir).exists() && Path::new(&zmq_pathdir).is_dir());
+    assert!(Path::new(&zmq_dir).exists() && Path::new(&zmq_dir).is_dir());
 
     let get_zmq_fullpath = |suffix: &str| {
         format!(
             "ipc://{}",
             String::from(
-                Path::new(&zmq_pathdir)
+                Path::new(&zmq_dir)
                     .join(suffix)
                     .to_str()
                     .expect("ZMQ path must be valid UTF-8"),
@@ -129,7 +139,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )?
         .start()?;
 
-    let _zmq_path = Path::new(&zmq_pathdir);
+    let _zmq_path = Path::new(&zmq_dir);
     let addr: SocketAddr = ip_addr.parse()?;
     let connect = Connect::new(addr).with_server_name("localhost");
     let mut connection = tokio::task::spawn_blocking(|| async move {

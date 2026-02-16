@@ -1,4 +1,8 @@
-zmq_pathdir: "/home/hwei/experiment2-out/zmq"
+experiment_output_dir: "/home/hwei/experiment2-out"
+zmq_dir: "/home/hwei/experiment2-out/zmq"
+quic_client_log_subdir: quic-client-out
+quic_server_log_subdir: quic-server-out
+
 slo_timeout_ms: 100
 junk_tx_loop_interval_ms: 100
 logging_interval_ms: 500
@@ -10,9 +14,6 @@ max_junk_payload_Mb: 5 # .5 Mb/s, this is the bandwidth not the payload size per
 junk_restart_interval_ms: 500
 
 services: [1, 2, 3, 4]
-
-quic_client_log_path: "/home/hwei/experiment2-out/quic-client-out"
-quic_server_log_path: "/home/hwei/experiment2-out/quic-server-out"
 
 client_enable_bw_stat_log: True
 client_enable_allocation_stat_log: True

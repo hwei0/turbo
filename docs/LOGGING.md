@@ -6,7 +6,12 @@ This document provides detailed documentation for the experiment logging system 
 
 Every component logs structured experiment data to **Parquet files** via the SpillableStore pattern (Python) or the `create_flush_parquet` utility (Rust). Records accumulate in memory up to a configurable `max_entries` threshold, then spill to a numbered Parquet file on disk. This produces sequentially numbered part files during a single experiment run.
 
-All Python-side Parquet files are written to the `client_savedir` / `server_log_savedir` / `ping_savedir` directories specified in the YAML configs (typically `~/experiment2-out/client/` and `~/experiment2-out/server/`). Rust-side Parquet files are written to `quic_client_log_path` / `quic_server_log_path` (typically `~/experiment2-out/quic-client-out/` and `~/experiment2-out/quic-server-out/`).
+Log output directories are **automatically created with timestamps** by each orchestrator at startup — they are not specified directly in the YAML configs. Instead, each config file specifies an `experiment_output_dir` base path and a subdirectory name. The orchestrators create a timestamped run directory under the base path and inject the full save path into each component's config.
+
+- **Python client-side** (`client_main.py`): Creates `<experiment_output_dir>/client_main_<timestamp>/<client_subdir>/` and injects it as `client_savedir`, `camera_savedir`, and `ping_savedir` for all client components.
+- **Python server-side** (`server_main.py`): Creates `<experiment_output_dir>/server_main_<timestamp>/<server_subdir>/` and injects it as `server_log_savedir` for all model servers.
+- **QUIC client** (`quic_client`): Creates `<experiment_output_dir>/quic_client_<timestamp>/<quic_client_log_subdir>/` for QUIC client Parquet logs.
+- **QUIC server** (`quic_server`): Creates `<experiment_output_dir>/quic_server_<timestamp>/<quic_server_log_subdir>/` for QUIC server Parquet logs.
 
 ## Python-Side Logs
 

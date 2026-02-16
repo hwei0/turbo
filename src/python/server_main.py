@@ -32,6 +32,7 @@ import logging.config
 from logging import FileHandler
 from pathlib import Path
 import signal
+import traceback
 import yaml
 from multiprocessing import Pool, Queue, Pipe
 import time
@@ -67,6 +68,26 @@ if __name__ == "__main__":
 
         logging.config.dictConfig(log_config)
 
+    # Create timestamped run directory and ZMQ directory for this experiment run
+    experiment_output_dir = Path(config_doc["experiment_output_dir"])
+    server_subdir = config_doc.get("server_subdir", "server")
+    zmq_dir = Path(config_doc["zmq_dir"])
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = experiment_output_dir / f"server_main_{timestamp}"
+    server_dir = run_dir / server_subdir
+
+    server_dir.mkdir(parents=True, exist_ok=True)
+    zmq_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Experiment run directory: %s", run_dir)
+
+    # Resolve paths in server config dicts before creating Pydantic models
+    for doc in config_doc["server_config_list"]:
+        doc["server_log_savedir"] = str(server_dir)
+        for key in ["incoming_zmq_sockname", "outgoing_zmq_sockname", "zmq_kill_switch_sockname"]:
+            doc[key] = f"ipc://{zmq_dir / doc[key]}"
+
     logger.info("experiment starting.")
 
     proc_results = []  # List of (process_name, AsyncResult)
@@ -93,7 +114,8 @@ if __name__ == "__main__":
         def err_callback(err):
             """Handle process pool errors by sending ABORT to all processes."""
             global early_abort
-            logger.error("Process error: %s: %s", type(err).__name__, err)
+            tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+            logger.error("Process error: %s: %s\n%s", type(err).__name__, err, tb)
             # for ks in kill_switches:
             #     ks.send_string("ABORT")
             early_abort = True

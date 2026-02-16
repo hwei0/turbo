@@ -11,7 +11,7 @@
 
 use atomic_float::AtomicF64;
 use config::{Config, File};
-use log::{debug, info};
+use log::{debug, error, info};
 use s2n_quic::provider::congestion_controller::Bbr;
 use s2n_quic::{stream::BidirectionalStream, Server};
 use std::env;
@@ -37,7 +37,12 @@ use quic_conn::utils::{quic_config::QuicConfig, tokio_context::TokioContext};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        error!("Panic: {}\n{}", panic_info, backtrace);
+    }));
 
     let recovery_ptr = Arc::new(RecoverySnapshot {
         rtt: AtomicF64::new(5.),
@@ -132,12 +137,19 @@ async fn handle_stream(
         .build()
         .expect("config must build successfully");
 
-    let binding = config
-        .get_string("quic_server_log_path")
-        .expect("config must contain 'quic_server_log_path'")
-        .clone();
-    let quic_server_log_dir = Path::new(&binding);
-    assert!(quic_server_log_dir.exists() && quic_server_log_dir.is_dir());
+    let experiment_output_dir = config
+        .get_string("experiment_output_dir")
+        .expect("config must contain 'experiment_output_dir'");
+    let quic_server_log_subdir = config
+        .get_string("quic_server_log_subdir")
+        .expect("config must contain 'quic_server_log_subdir'");
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+    let quic_server_log_path = Path::new(&experiment_output_dir)
+        .join(format!("quic_server_{}", timestamp))
+        .join(&quic_server_log_subdir);
+    std::fs::create_dir_all(&quic_server_log_path)
+        .expect("must be able to create quic server log directory");
+    let quic_server_log_dir = quic_server_log_path.as_path();
 
     let bw_stat_log_capacity = config
         .get_int("bw_stat_log_capacity")
@@ -179,10 +191,10 @@ async fn handle_stream(
     info!("Server config parsed successfully for service={}", service_string);
 
     let quic_config = QuicConfig::read_from_config(config);
-    let (timing_config, _init_allocation, zmq_pathdir, services) = (
+    let (timing_config, _init_allocation, zmq_dir, services) = (
         quic_config.timing_config,
         quic_config.init_allocation,
-        quic_config.zmq_pathdir,
+        quic_config.zmq_dir,
         quic_config.services,
     );
 
@@ -190,7 +202,7 @@ async fn handle_stream(
         format!(
             "ipc://{}",
             String::from(
-                Path::new(&zmq_pathdir)
+                Path::new(&zmq_dir)
                     .join(suffix)
                     .to_str()
                     .expect("ZMQ path must be valid UTF-8"),

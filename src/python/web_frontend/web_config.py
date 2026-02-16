@@ -7,6 +7,7 @@ plotting sleep settings. Supports environment variable overrides and provides fa
 default configurations for standalone testing.
 """
 
+from pathlib import Path
 import yaml
 from util.plotting_main import MainPlotterConfig
 from util.bandwidth_allocation_plot import BandwidthAllocationPlotConfig
@@ -26,8 +27,11 @@ def load_config_from_yaml(config_file: str = "client_config.yaml") -> MainPlotte
         if "main_plotter_config" in config_data:
             plotter_config = config_data["main_plotter_config"]
 
-            zmq_name = plotter_config["zmq_incoming_diagnostic_name"]
-            
+            # Resolve the bare ZMQ socket name to a full ipc:// path using zmq_dir,
+            # matching what client_main.py does with resolve_zmq()
+            zmq_dir = config_data["zmq_dir"]
+            zmq_name = f"ipc://{Path(zmq_dir) / plotter_config['zmq_incoming_diagnostic_name']}"
+
             # Build the configuration using your actual structure
             plotting_config = {
                 "zmq_incoming_diagnostic_name": zmq_name,

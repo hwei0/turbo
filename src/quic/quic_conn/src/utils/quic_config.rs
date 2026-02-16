@@ -11,7 +11,7 @@ use config::Config;
 pub struct QuicConfig {
     pub timing_config: TimingConfig,
     pub init_allocation: f64,
-    pub zmq_pathdir: String,
+    pub zmq_dir: String,
     pub services: Vec<i32>,
 }
 
@@ -66,9 +66,9 @@ impl QuicConfig {
         let init_allocation = config
             .get_float("init_allocation")
             .expect("config must contain 'init_allocation'");
-        let zmq_pathdir = config
-            .get_string("zmq_pathdir")
-            .expect("config must contain 'zmq_pathdir'");
+        let zmq_dir = config
+            .get_string("zmq_dir")
+            .expect("config must contain 'zmq_dir'");
         let services: Vec<config::Value> = config
             .get_array("services")
             .expect("config must contain 'services' array");
@@ -76,7 +76,7 @@ impl QuicConfig {
         QuicConfig {
             timing_config,
             init_allocation,
-            zmq_pathdir,
+            zmq_dir,
             services: Vec::from_iter(services.iter().map(|v| {
                 v.clone()
                     .into_int()

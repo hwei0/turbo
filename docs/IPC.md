@@ -95,7 +95,7 @@ This section documents every IPC channel between components. All connections use
 | MainPlotter | ZMQ PUB (connect) | `car-client-diagnostics` | PUB/SUB | QUIC Client → MainPlotter | `send_loop` publishes per-service network utilization stats (send rate, receive rate, allocated limit) |
 | QUIC Server | QUIC stream | TCP (s2n-quic) | Bidirectional | QUIC Client ↔ QUIC Server | Multiplexed per-service bidirectional streams carrying image data and inference results |
 
-**Config**: `quic/quic_config_*.yaml` (zmq_pathdir, services, timing, logging)
+**Config**: `quic/quic_config_*.yaml` (zmq_dir, services, timing, logging)
 
 ---
 
@@ -183,7 +183,7 @@ This section documents every IPC channel between components. All connections use
 
 ## ZMQ Socket Protocol Summary
 
-All ZMQ sockets use the `ipc://` transport over Unix domain sockets. The base directory is configured as `zmq_pathdir` in the QUIC config and embedded in full paths in the client/server YAML configs.
+All ZMQ sockets use the `ipc://` transport over Unix domain sockets. The base directory is configured as `zmq_dir` in all config files. Socket names are stored as bare names in the YAML configs and automatically resolved to full `ipc://<zmq_dir>/<name>` paths by the Python orchestrators (`client_main.py`, `server_main.py`) and the Rust QUIC binaries.
 
 | Socket Name | Type | Binder (Role) | Connector (Role) | Payload |
 |-------------|------|---------------|-------------------|---------|

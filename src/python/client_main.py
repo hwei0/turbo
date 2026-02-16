@@ -35,6 +35,7 @@ import logging.config
 from logging import FileHandler
 from pathlib import Path
 import signal
+import traceback
 import yaml
 from multiprocessing import Pool, Queue, Pipe
 import time
@@ -74,6 +75,63 @@ if __name__ == "__main__":
             log_config = yaml.safe_load(stream)
 
         logging.config.dictConfig(log_config)
+
+    # Create timestamped run directory and ZMQ directory for this experiment run
+    experiment_output_dir = Path(config_doc["experiment_output_dir"])
+    client_subdir = config_doc.get("client_subdir", "client")
+    zmq_dir = Path(config_doc["zmq_dir"])
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = experiment_output_dir / f"client_main_{timestamp}"
+    client_dir = run_dir / client_subdir
+
+    client_dir.mkdir(parents=True, exist_ok=True)
+    zmq_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Experiment run directory: %s", run_dir)
+
+    def resolve_zmq(name: str) -> str:
+        return f"ipc://{zmq_dir / name}"
+
+    # Resolve paths in config dicts before creating Pydantic models
+    for doc in config_doc["main_client_config_list"]:
+        doc["client_savedir"] = str(client_dir)
+        for key in [
+            "camera_bidirectional_zmq_sockname",
+            "bandwidth_allocation_incoming_zmq_sockname",
+            "quic_rcv_zmq_sockname",
+            "quic_snd_zmq_sockname",
+            "outgoing_zmq_diagnostic_sockname",
+            "zmq_kill_switch_sockname",
+        ]:
+            doc[key] = resolve_zmq(doc[key])
+
+    bw_doc = config_doc["bandwidth_allocator_config"]
+    for key in [
+        "outgoing_zmq_diagnostic_sockname",
+        "bidirectional_zmq_quic_sockname",
+        "zmq_kill_switch_sockname",
+        "bidirectional_zmq_ping_handler_sockname",
+    ]:
+        bw_doc[key] = resolve_zmq(bw_doc[key])
+    bw_doc["outgoing_zmq_client_socknames"] = [
+        resolve_zmq(name) for name in bw_doc["outgoing_zmq_client_socknames"]
+    ]
+
+    ping_doc = config_doc["ping_handler_config"]
+    ping_doc["ping_savedir"] = str(client_dir)
+    for key in ["bidirectional_zmq_sockname", "zmq_kill_switch_sockname"]:
+        ping_doc[key] = resolve_zmq(ping_doc[key])
+
+    for doc in config_doc["camera_stream_config_list"]:
+        doc["camera_savedir"] = str(client_dir)
+        for key in ["bidirectional_zmq_sockname", "zmq_kill_switch_sockname"]:
+            doc[key] = resolve_zmq(doc[key])
+
+    plotter_doc = config_doc["main_plotter_config"]
+    plotter_doc["zmq_incoming_diagnostic_name"] = resolve_zmq(
+        plotter_doc["zmq_incoming_diagnostic_name"]
+    )
 
     logger.info("experiment starting.")
 
@@ -149,7 +207,8 @@ if __name__ == "__main__":
         def err_callback(err):
             """Handle process pool errors by sending ABORT to all processes."""
             global early_abort
-            logger.error("Process error: %s: %s", type(err).__name__, err)
+            tb = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+            logger.error("Process error: %s: %s\n%s", type(err).__name__, err, tb)
             # for ks in kill_switches:
             #     ks.send_string("ABORT")
             early_abort = True
