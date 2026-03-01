@@ -52,7 +52,14 @@ You generally don't need to edit these unless you're changing service behavior (
 
 TURBO supports mock camera and mock inference modes for testing without physical cameras or GPUs. See the [Mock Modes](../README.md#mock-modes) section in the main README for full details.
 
-In the Docker configs (`docker/config/`), the mock files are bundled into the container at `/app/` — so the paths use `/app/mock_webcam_image.jpg` and `/app/example_effdet_d4_output.npy` instead of host-absolute paths.
+In Docker, mock modes are toggled via environment variables in `.env`:
+
+| Variable | Effect when non-empty | Default |
+|---|---|---|
+| `MOCK_CAMERA` | Passes `--mock-camera` to `client_main.py` — uses static images instead of USB cameras | (empty — disabled) |
+| `MOCK_INFERENCE` | Passes `--mock-inference` to `server_main.py` — returns pre-recorded detections instead of GPU inference | (empty — disabled) |
+
+The mock data files (`mock_webcam_image.jpg`, `example_effdet_d4_output.npy`) are bundled into the container at `/app/` and their paths are pre-configured in `docker/config/`.
 
 ### Additional running commands
 

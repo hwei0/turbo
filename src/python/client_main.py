@@ -69,6 +69,11 @@ if __name__ == "__main__":
         required=True,
         help="server address (host or host:port) — IP is extracted for ping handler",
     )
+    parser.add_argument(
+        "--mock-camera",
+        action="store_true",
+        help="enable mock camera mode — use static images from paths in config instead of USB cameras",
+    )
 
     args = parser.parse_args()
 
@@ -135,6 +140,20 @@ if __name__ == "__main__":
         doc["camera_savedir"] = str(client_dir)
         for key in ["bidirectional_zmq_sockname", "zmq_kill_switch_sockname"]:
             doc[key] = resolve_zmq(doc[key])
+        if not args.mock_camera:
+            doc["mock_camera_image_path"] = None
+
+    if args.mock_camera:
+        logger.warning(
+            "\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "@    WARNING: MOCK CAMERA MODE IS ENABLED!               @\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "All camera streams will serve a static image from disk\n"
+            "instead of capturing from USB cameras.\n"
+            "This is intended for testing only.\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+        )
 
     plotter_doc = config_doc["main_plotter_config"]
     plotter_doc["zmq_incoming_diagnostic_name"] = resolve_zmq(

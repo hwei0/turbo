@@ -38,13 +38,8 @@ server_config_list:
     thread_concurrency: 10
     shm_filesize: *shm-filesize
     zmq_kill_switch_sockname: remote-server-kill-switch-1
-    # Mock inference: uncomment ONE of the following blocks
-    # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
-    # -- real mode — loads models and runs GPU inference
-    mock_inference_output_path: null
-    mock_model_latency_csv_path: null
+    mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy # only used when --mock-inference is passed
+    mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv # only used when --mock-inference is passed
   - service_id: 2
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
@@ -56,13 +51,8 @@ server_config_list:
     thread_concurrency: 10
     shm_filesize: *shm-filesize
     zmq_kill_switch_sockname: remote-server-kill-switch-2
-    # Mock inference: uncomment ONE of the following blocks
-    # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
-    # -- real mode — loads models and runs GPU inference
-    mock_inference_output_path: null
-    mock_model_latency_csv_path: null
+    mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy # only used when --mock-inference is passed
+    mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv # only used when --mock-inference is passed
   - service_id: 3
     max_entries: *max-log-entries
     model_metadata_list: *model-list-ref
@@ -74,10 +64,5 @@ server_config_list:
     thread_concurrency: 10
     shm_filesize: *shm-filesize
     zmq_kill_switch_sockname: remote-server-kill-switch-3
-    # Mock inference: uncomment ONE of the following blocks
-    # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
-    # -- real mode — loads models and runs GPU inference
-    mock_inference_output_path: null
-    mock_model_latency_csv_path: null
+    mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy # only used when --mock-inference is passed
+    mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv # only used when --mock-inference is passed

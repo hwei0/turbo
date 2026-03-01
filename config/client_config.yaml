@@ -99,9 +99,7 @@ camera_stream_config_list:
     shmem_buf_size: *quic-shm-size
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-1-switch
-    # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg # only used when --mock-camera is passed
   - camera_id: 2 # FRONT LEFT
     usb_id: 4 # TODO: CONFIGURE THIS
     max_entries: *max-log-entries
@@ -111,9 +109,7 @@ camera_stream_config_list:
     shmem_buf_size: *quic-shm-size
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-2-switch
-    # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg # only used when --mock-camera is passed
   - camera_id: 3 # FRONT RIGHT
     usb_id: 8 # TODO: CONFIGURE THIS
     max_entries: *max-log-entries
@@ -123,9 +119,7 @@ camera_stream_config_list:
     shmem_buf_size: *quic-shm-size
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-3-switch
-    # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg # only used when --mock-camera is passed
 
 main_plotter_config:
 # service 4 is for junk stream

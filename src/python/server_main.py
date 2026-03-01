@@ -54,6 +54,11 @@ if __name__ == "__main__":
         required=True,
         help="path to server config file",
     )
+    parser.add_argument(
+        "--mock-inference",
+        action="store_true",
+        help="enable mock inference mode — skip GPU model loading and return pre-recorded detections from paths in config",
+    )
 
     args = parser.parse_args()
 
@@ -87,6 +92,21 @@ if __name__ == "__main__":
         doc["server_log_savedir"] = str(server_dir)
         for key in ["incoming_zmq_sockname", "outgoing_zmq_sockname", "zmq_kill_switch_sockname"]:
             doc[key] = f"ipc://{zmq_dir / doc[key]}"
+        if not args.mock_inference:
+            doc["mock_inference_output_path"] = None
+            doc["mock_model_latency_csv_path"] = None
+
+    if args.mock_inference:
+        logger.warning(
+            "\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "@    WARNING: MOCK INFERENCE MODE IS ENABLED!             @\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+            "All model servers will skip GPU model loading and return\n"
+            "pre-recorded detection results instead of running inference.\n"
+            "This is intended for testing only.\n"
+            "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+        )
 
     logger.info("experiment starting.")
 

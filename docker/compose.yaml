@@ -170,7 +170,7 @@ services:
         target: /app/mock_webcam_image.jpg
         read_only: true
     command: >
-      bash -c 'cd src/python && exec python client_main.py -c /app/python_config.yaml -s ${QUIC_CLIENT_ADDR}'
+      bash -c 'cd src/python && exec python client_main.py -c /app/python_config.yaml -s ${QUIC_CLIENT_ADDR} ${MOCK_CAMERA:+--mock-camera}'
     healthcheck:
       test: ["CMD", "test", "-f", "/health/client_main_ready"]
       interval: 2s
@@ -225,6 +225,8 @@ services:
         source: ${MOCK_EFFDET_OUTPUT_PATH}
         target: /app/example_effdet_d4_output.npy
         read_only: true
+    command: >
+      bash -c 'cd src/python && exec python server_main.py -c /app/python_config.yaml ${MOCK_INFERENCE:+--mock-inference}'
   client_python_monitor:
     profiles: ['client']
     init: true
