@@ -1,0 +1,66 @@
+version: 1
+formatters:
+  verbose_singlethread:
+    format: '%(levelname)s %(asctime)s %(name)s at %(filename)s:%(funcName)s:%(lineno)d: %(message)s'
+  verbose_multithread:
+    format: '%(levelname)s %(asctime)s %(name)s, process %(process)d:%(thread)d at %(filename)s:%(funcName)s:%(lineno)d: %(message)s'
+  simple_singlethread: 
+    format: '%(levelname)s %(asctime)s %(name)s: %(message)s'
+  simple_multithread: 
+    format: '%(levelname)s %(asctime)s %(name)s, process %(process)d:%(thread)d: %(message)s'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: verbose_multithread
+    stream: ext://sys.stdout
+  
+loggers:
+  bandwidth_allocator:
+    level: INFO
+    handlers: [console] #todo: add any of the above file handlers as needed for each of the below loggers
+    propagate: no
+  bandwidth_visualizer:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  client_main:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  client:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  server_main:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  plotter_main:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  model_server:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  camera_data_stream:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  main_plotter:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  effdet_inference:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  ping_handler:
+    level: INFO
+    handlers: [console]
+    propagate: no
+root:
+  level: NOTSET
+  handlers: [console]

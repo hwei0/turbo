@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+
+FROM base_image
+ARG APP_NAME
+WORKDIR /app
+
+FROM alpine:3.18 AS final
+ARG APP_NAME
+ARG QUIC_BIND_ADDR
+ARG QUIC_DOCKER_PORT
+
+# Create a non-privileged user that the app will run under.
+# See https://docs.docker.com/go/dockerfile-user-best-practices/
+ARG UID=10001
+ARG GID=999
+RUN addgroup -g "${GID}" sharedgroup && \
+    adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    --ingroup sharedgroup \
+    appuser
+USER appuser
+
+# Copy the executable from the "build" stage.
+COPY --from=base_image /bin/$APP_NAME /bin/server
+
+# Expose the port that the application listens on.
+EXPOSE ${QUIC_DOCKER_PORT}
+
+ENV QUIC_BIND_ADDR=${QUIC_BIND_ADDR}
+
+# What the container should run when it is started.
+# Signal handling is provided by `init: true` in compose.yaml (tini as PID 1).
+# `exec` is optional here — it just avoids a redundant /bin/sh parent process.
+CMD exec /bin/server "/app/quic_config.yaml" "${QUIC_BIND_ADDR}"

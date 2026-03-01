@@ -304,7 +304,7 @@ class Client:
     - Detailed latency logging to Parquet files
     """
 
-    def __init__(self, config: ClientConfig) -> None:
+    def __init__(self, config: ClientConfig, ready_queue=None) -> None:
         self.service_id = config.service_id
         self._is_cleaned_up = False
         self.spillable_store = ClientSpillableStore(
@@ -343,6 +343,9 @@ class Client:
 
         self.quic_rcv_zmq_socket = self.context.socket(zmq.REP)
         self.quic_rcv_zmq_socket.bind(config.quic_rcv_zmq_sockname)
+
+        if ready_queue is not None:
+            ready_queue.put(self.service_id)
 
         # Create kill switch early so we can check it during the handshake wait
         self.quic_kill_switch = self.context.socket(zmq.SUB)

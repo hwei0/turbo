@@ -28,7 +28,7 @@ def parse_args():
         help="Host to bind the server to (default: 0.0.0.0)",
     )
     parser.add_argument(
-        "--config", type=str, help="Path to configuration file (optional)"
+        "-c", "--config", type=str, help="Path to configuration file (optional)"
     )
     parser.add_argument(
         "--refresh-rate",

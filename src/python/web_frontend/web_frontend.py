@@ -353,12 +353,19 @@ def main(config: str):
 
         web_plotter = WebPlotterAdapter(config, web_config.plotting_loop_sleep_seconds)
 
+        # Signal readiness for Docker healthcheck (used by depends_on sequencing)
+        from pathlib import Path
+        health_signal = Path("/health/monitor_ready")
+        if health_signal.parent.exists():
+            health_signal.touch()
+            LOGGER.info("Health signal written: %s", health_signal)
+
         # Start the plotting loop
         web_plotter.run_plotting_loop()
 
         LOGGER.info("Starting web server on http://localhost:5000")
         LOGGER.info("Press Ctrl+C to stop")
-        socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+        socketio.run(app, host="0.0.0.0", port=5000, debug=False, allow_unsafe_werkzeug=True)
 
     except KeyboardInterrupt:
         LOGGER.info("Shutting down...")

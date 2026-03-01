@@ -42,7 +42,6 @@ experiment_output_dir: /path/to/experiment-out
 client_subdir: client
 zmq_dir: /path/to/experiment-out/zmq
 
-DST_IP: &dst-ip <YOUR_SERVER_IP>    # Cloud server IP for ICMP pings
 SLO_TIMEOUT: &slo-timeout 200       # Client-side SLO timeout (ms), shared via anchor
 QUIC_SHM_SIZE: &quic-shm-size 50000000  # Shared memory region size (bytes, ~50 MB)
 MAX_LOG_ENTRIES: &max-log-entries 100    # Max records in memory before spilling to Parquet
@@ -54,7 +53,6 @@ MAX_LOG_ENTRIES: &max-log-entries 100    # Max records in memory before spilling
 | `experiment_output_dir` | **Yes** | Base output directory. `client_main.py` creates a timestamped subdirectory here (e.g., `experiment-out/client_main_2024-01-15_10-30-00/`) for each run |
 | `client_subdir` | No | Subdirectory name within the timestamped run directory for client Parquet logs. Default `client` |
 | `zmq_dir` | **Yes** | Directory for ZMQ IPC socket files. Must match across client, server, and QUIC configs. Created automatically if it doesn't exist |
-| `DST_IP` | **Yes** | Public IP of your cloud server. Used by PingHandler for RTT measurement |
 | `SLO_TIMEOUT` | Maybe | Service-level objective timeout in ms. Frames exceeding this are dropped. Default `200` is suitable for most setups |
 | `QUIC_SHM_SIZE` | No | Size of each POSIX shared memory region in bytes. `50000000` (50 MB) is sufficient for HD frames |
 | `MAX_LOG_ENTRIES` | No | Number of log records buffered in memory before flushing to Parquet. Higher = fewer I/O flushes, more memory |
@@ -199,7 +197,6 @@ camera_stream_config_list:
 
 ```yaml
 ping_handler_config:
-  dst_ip: *dst-ip
   max_entries: 100
   thread_concurrency: 5
   bidirectional_zmq_sockname: ping-handler
@@ -210,7 +207,7 @@ ping_handler_config:
 
 | Parameter | Must customize? | Description |
 |-----------|:-:|---|
-| `dst_ip` | **Yes** | IP address to ping for RTT measurement. Should be your cloud server's public IP (uses global `DST_IP` anchor) |
+| `dst_ip` | N/A | Set automatically by `client_main.py` from the `--server_address` CLI argument (port stripped) |
 | `max_entries` | No | Log buffer size |
 | `thread_concurrency` | No | Thread pool size |
 | `bidirectional_zmq_sockname` | No | Bare ZMQ socket name. Must match the bandwidth allocator's `bidirectional_zmq_ping_handler_sockname` |
@@ -480,7 +477,6 @@ mkdir -p ~/experiment-out
 - [ ] `logging_config_filepath` points to `config/logging_config.yaml` (absolute path)
 - [ ] `experiment_output_dir` is set to your chosen output directory
 - [ ] `zmq_dir` is set (e.g., `~/experiment-out/zmq`) and matches all other configs
-- [ ] `DST_IP` is set to your cloud server's public IP address
 - [ ] `parquet_eval_dir` points to the directory containing pre-computed utility curve Parquet files
 - [ ] `model_info_csv_path` points to the `experiment_model_info.csv` file
 - [ ] `camera_stream_config_list[].usb_id` matches your USB camera device IDs (run `ls /dev/video*`)
