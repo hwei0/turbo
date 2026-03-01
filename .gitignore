@@ -36,7 +36,6 @@ bandwidth_allocation/.DS_Store
 
 **/.vscode/*
 **/target/*
-**/Cargo.lock
 
 # we don't want your SSL certs/keys
 **/*.key
