@@ -131,7 +131,7 @@ This section documents every IPC channel between components. All connections use
 
 | Peer | Transport | Socket Name | Pattern | Direction | Purpose |
 |------|-----------|-------------|---------|-----------|---------|
-| BandwidthAllocator | ZMQ REP (bind) | `ping-handler` | REQ/REP | BandwidthAllocator → PingHandler | Responds to RTT queries with the latest ICMP ping measurement to `DST_IP` (the cloud server) |
+| BandwidthAllocator | ZMQ REP (bind) | `ping-handler` | REQ/REP | BandwidthAllocator → PingHandler | Responds to RTT queries with the latest ICMP ping measurement to the server (IP from `--server_address` CLI arg) |
 | client_main | ZMQ SUB (bind) | `ping-handler-kill-switch` | PUB/SUB | client_main → PingHandler | Receive "ABORT" signal for graceful shutdown |
 
 **Config**: `ping_handler_config` in `config/client_config.yaml`

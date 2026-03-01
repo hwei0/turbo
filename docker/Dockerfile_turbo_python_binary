@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+FROM base_image AS final
+WORKDIR /app
+
+ARG EXECUTABLE_DIR
+ARG EXECUTABLE_NAME
+
+# Create a non-privileged user that the app will run under.
+# See https://docs.docker.com/go/dockerfile-user-best-practices/
+ARG GID=515
+ARG UID=999
+
+# Setup a non-root user
+RUN useradd --system --gid ${GID} --uid ${UID} --create-home nonroot
+USER nonroot
+
+
+ENV EXECUTABLE_DIR=${EXECUTABLE_DIR}
+ENV EXECUTABLE_NAME=${EXECUTABLE_NAME}
+
+# What the container should run when it is started.
+# Signal handling is provided by `init: true` in compose.yaml (tini as PID 1).
+# `exec` is optional here — it just avoids a redundant /bin/sh parent process.
+# We call python directly instead of `uv run` because uv spawns python as a
+# child and may not forward signals. The venv is already on PATH
+# (set in Dockerfile_turbo_python_base), so `python` resolves correctly.
+CMD cd ${EXECUTABLE_DIR} && exec python ${EXECUTABLE_NAME} "-c" "/app/python_config.yaml"

@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+
+ARG RUST_VERSION=1.93.0
+
+FROM rust:${RUST_VERSION}-alpine AS rust_build
+ARG APP_NAME_LIST
+ARG SSL_CERT_PATH
+ARG SSL_KEY_PATH
+WORKDIR /app
+
+# Install host build dependencies.
+RUN apk add --no-cache clang lld musl-dev git
+
+# Build the application.
+# Leverage a cache mount to /usr/local/cargo/registry/
+# for downloaded dependencies, a cache mount to /usr/local/cargo/git/db
+# for git repository dependencies, and a cache mount to /app/target/ for
+# compiled dependencies which will speed up subsequent builds.
+# Leverage a bind mount to the src directory to avoid having to copy the
+# source code into the container. Once built, copy the executable to an
+# output directory before the cache mounted /app/target is unmounted.
+RUN --mount=type=bind,source=src/quic/quic_client,target=quic_client \
+    --mount=type=bind,source=src/quic/quic_conn,target=quic_conn \
+    --mount=type=bind,source=src/quic/quic_server,target=quic_server \
+    --mount=type=bind,source=src/quic/Cargo.toml,target=Cargo.toml \
+    --mount=type=bind,source=src/quic/Cargo.lock,target=Cargo.lock \
+    --mount=type=bind,source=${SSL_CERT_PATH},target=ssl_cert.pem \
+    --mount=type=bind,source=${SSL_KEY_PATH},target=ssl_key.pem \
+    --mount=type=cache,target=/app/target/ \
+    --mount=type=cache,target=/usr/local/cargo/git/db \
+    --mount=type=cache,target=/usr/local/cargo/registry/ \
+    cargo build --locked --release && \
+    IFS=',' && \
+    for app_name in $APP_NAME_LIST; do \
+    echo $app_name && echo $(ls ./target/release) && cp ./target/release/$app_name /bin/$app_name; \
+    done

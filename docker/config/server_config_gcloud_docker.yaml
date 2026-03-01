@@ -1,26 +1,26 @@
-logging_config_filepath: /home/hwei/turbo/config/logging_config.yaml
+logging_config_filepath: /app/logging_config.yaml
 
-experiment_output_dir: /home/hwei/experiment2-out
+experiment_output_dir: /app/experiment2-out
 server_subdir: server
-zmq_dir: /home/hwei/experiment2-out/zmq
+zmq_dir: /app/zmq-out
 
 MAX_LOG_ENTRIES: &max-log-entries 100
 SHM_FILESIZE: &shm-filesize 50000000
 
 server_model_list: &model-list-ref
-  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d2-waymo-open-dataset/version_2/checkpoints/epoch=9-step=419700.ckpt
+  - checkpoint_path: /app/av-models/tf_efficientdet_d2-waymo-open-dataset/version_2/checkpoints/epoch=9-step=419700.ckpt
     num_classes: 5
     image_size: [768, 768]
     base_model: "tf_efficientdet_d2"
-  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d4-waymo-open-dataset/version_0/checkpoints/epoch=9-step=839400.ckpt
+  - checkpoint_path: /app/av-models/tf_efficientdet_d4-waymo-open-dataset/version_0/checkpoints/epoch=9-step=839400.ckpt
     num_classes: 5
     image_size: [1024, 1024]
     base_model: "tf_efficientdet_d4"
-  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d6-waymo-open-dataset/version_2/checkpoints/epoch=9-step=3357600.ckpt
+  - checkpoint_path: /app/av-models/tf_efficientdet_d6-waymo-open-dataset/version_2/checkpoints/epoch=9-step=3357600.ckpt
     num_classes: 5
     image_size: [1280, 1280]
     base_model: "tf_efficientdet_d6"
-  - checkpoint_path: /home/hwei/av-models/tf_efficientdet_d7x-waymo-open-dataset/version_1/checkpoints/epoch=8-step=1477071.ckpt
+  - checkpoint_path: /app/av-models/tf_efficientdet_d7x-waymo-open-dataset/version_1/checkpoints/epoch=8-step=1477071.ckpt
     num_classes: 5
     image_size: [1536, 1536]
     base_model: "tf_efficientdet_d7x"
@@ -40,8 +40,8 @@ server_config_list:
     zmq_kill_switch_sockname: remote-server-kill-switch-1
     # Mock inference: uncomment ONE of the following blocks
     # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
+    # mock_inference_output_path: /app/example_effdet_d4_output.npy
+    # mock_model_latency_csv_path: /app/experiment_model_info.csv
     # -- real mode — loads models and runs GPU inference
     mock_inference_output_path: null
     mock_model_latency_csv_path: null
@@ -58,8 +58,8 @@ server_config_list:
     zmq_kill_switch_sockname: remote-server-kill-switch-2
     # Mock inference: uncomment ONE of the following blocks
     # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
+    # mock_inference_output_path: /app/example_effdet_d4_output.npy
+    # mock_model_latency_csv_path: /app/experiment_model_info.csv
     # -- real mode — loads models and runs GPU inference
     mock_inference_output_path: null
     mock_model_latency_csv_path: null
@@ -76,8 +76,8 @@ server_config_list:
     zmq_kill_switch_sockname: remote-server-kill-switch-3
     # Mock inference: uncomment ONE of the following blocks
     # -- mock mode — skips GPU model loading, returns pre-recorded detections
-    # mock_inference_output_path: /home/hwei/turbo/src/python/camera_stream/example_effdet_d4_output.npy
-    # mock_model_latency_csv_path: /home/hwei/turbo/experiment_model_info.csv
+    # mock_inference_output_path: /app/example_effdet_d4_output.npy
+    # mock_model_latency_csv_path: /app/experiment_model_info.csv
     # -- real mode — loads models and runs GPU inference
     mock_inference_output_path: null
     mock_model_latency_csv_path: null

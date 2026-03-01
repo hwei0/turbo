@@ -103,8 +103,9 @@ if __name__ == "__main__":
     num_server_processes = len(config_doc["server_config_list"])
     logger.info("Initializing process pool with %d ModelServer processes", num_server_processes)
 
-    # track the original signint_handler to restore it later.
+    # track the original signal handlers to restore them later.
     original_sigint_handler = signal.getsignal(signal.SIGINT)
+    original_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     zmq_context = zmq.Context()
     with Pool(processes=num_server_processes) as pool:
@@ -127,6 +128,7 @@ if __name__ == "__main__":
             signal_exit = True
 
         signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
         # Phase 1: Create all configs and kill switches before starting any processes.
         # This ensures err_callback can send ABORT to all processes if one fails early.
@@ -205,6 +207,7 @@ if __name__ == "__main__":
 
         logger.info("Pool will exit. If needed, press Ctrl-C again to terminate the program finally.")
         signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
 
     for ks in kill_switches:
         ks.close(linger=0)

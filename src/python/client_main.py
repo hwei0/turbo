@@ -37,7 +37,7 @@ from pathlib import Path
 import signal
 import traceback
 import yaml
-from multiprocessing import Pool, Queue, Pipe
+from multiprocessing import Manager, Pool, Pipe
 import time
 import os
 import argparse
@@ -61,6 +61,13 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="path to server config file",
+    )
+    parser.add_argument(
+        "-s",
+        "--server_address",
+        type=str,
+        required=True,
+        help="server address (host or host:port) — IP is extracted for ping handler",
     )
 
     args = parser.parse_args()
@@ -120,6 +127,7 @@ if __name__ == "__main__":
 
     ping_doc = config_doc["ping_handler_config"]
     ping_doc["ping_savedir"] = str(client_dir)
+    ping_doc["dst_ip"] = args.server_address.split(":")[0]
     for key in ["bidirectional_zmq_sockname", "zmq_kill_switch_sockname"]:
         ping_doc[key] = resolve_zmq(ping_doc[key])
 
@@ -152,10 +160,10 @@ if __name__ == "__main__":
         except GracefulShutdown:
             return None
 
-    def run_main_client(client_config):
+    def run_main_client(client_config, ready_queue):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         try:
-            return Client(client_config).main_loop()
+            return Client(client_config, ready_queue=ready_queue).main_loop()
         except GracefulShutdown:
             return None
 
@@ -197,8 +205,9 @@ if __name__ == "__main__":
 
     zmq_context = zmq.Context()
 
-    # track the original signint_handler to restore it later.
+    # track the original signal handlers to restore them later.
     original_sigint_handler = signal.getsignal(signal.SIGINT)
+    original_sigterm_handler = signal.getsignal(signal.SIGTERM)
     
     with Pool(processes=total_processes) as pool:
         early_abort = False
@@ -220,6 +229,7 @@ if __name__ == "__main__":
             signal_exit = True
 
         signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
         # Phase 1: Create all configs and kill switches before starting any processes.
         # This ensures err_callback can send ABORT to all processes if one fails early.
@@ -279,15 +289,31 @@ if __name__ == "__main__":
 
         # Start all client processes
         logger.info("Starting %d client processes", num_client_processes)
+        manager = Manager()
+        client_ready_queue = manager.Queue()
         for client_config in client_configs:
             logger.debug("Launching client process for service_id=%d", client_config.service_id)
             proc_name = f"Client-{client_config.service_id}"
             proc_results.append((
                 proc_name,
                 pool.apply_async(
-                    run_main_client, [client_config], error_callback=err_callback
+                    run_main_client, [client_config, client_ready_queue], error_callback=err_callback
                 )
             ))
+
+        # Wait for all client processes to bind quic_rcv_zmq_socket before
+        # signaling readiness. Rust QUIC clients (in a separate Docker container)
+        # depend on this health signal to start, so we must ensure the Python
+        # sockets are bound and ready to accept connections first.
+        logger.info("Waiting for %d client processes to bind quic_rcv_zmq_socket...", num_client_processes)
+        for _ in range(num_client_processes):
+            service_id = client_ready_queue.get()
+            logger.info("Client %d: quic_rcv_zmq_socket bound and ready", service_id)
+
+        health_signal = Path("/health/client_main_ready")
+        if health_signal.parent.exists():
+            health_signal.touch()
+            logger.info("Health signal written: %s", health_signal)
 
         # Start bandwidth allocator process
         logger.info("Starting bandwidth allocator process")
@@ -354,6 +380,7 @@ if __name__ == "__main__":
             
         logger.info("Pool will exit. If needed, press Ctrl-C again to terminate the program finally.")
         signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
 
     logger.info("Exiting kill switches...")
     for ks in kill_switches:

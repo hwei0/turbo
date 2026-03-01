@@ -1,8 +1,8 @@
-logging_config_filepath: /home/hwei/turbo/config/logging_config.yaml
+logging_config_filepath: /app/logging_config.yaml
 
-experiment_output_dir: /home/hwei/experiment2-out
+experiment_output_dir: /app/experiment2-out
 client_subdir: client
-zmq_dir: /home/hwei/experiment2-out/zmq
+zmq_dir: /app/zmq-out
 
 web_dashboard_config:
   refresh_rate_seconds: 6
@@ -72,8 +72,8 @@ main_client_config_list:
 bandwidth_allocator_config:
   service_id_list: [1, 2, 3]
   t_SLO: 150 #TODO: change this
-  parquet_eval_dir: /home/hwei/full-eval
-  model_info_csv_path: /home/hwei/turbo/experiment_model_info.csv
+  parquet_eval_dir: /app/full-eval
+  model_info_csv_path: /app/experiment_model_info.csv
   outgoing_zmq_diagnostic_sockname: car-client-diagnostics
   outgoing_zmq_client_socknames:
     - main-client-1-bw-subscriber
@@ -100,8 +100,8 @@ camera_stream_config_list:
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-1-switch
     # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    # mock_camera_image_path: /app/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
+    mock_camera_image_path: null                      # real mode — captures from USB camera
   - camera_id: 2 # FRONT LEFT
     usb_id: 4 # TODO: CONFIGURE THIS
     max_entries: *max-log-entries
@@ -112,8 +112,8 @@ camera_stream_config_list:
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-2-switch
     # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    # mock_camera_image_path: /app/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
+    mock_camera_image_path: null                      # real mode — captures from USB camera
   - camera_id: 3 # FRONT RIGHT
     usb_id: 8 # TODO: CONFIGURE THIS
     max_entries: *max-log-entries
@@ -124,8 +124,8 @@ camera_stream_config_list:
     camera_np_size: [1080, 1920, 3]
     zmq_kill_switch_sockname: camera-kill-3-switch
     # Mock camera: uncomment ONE of the following lines
-    # mock_camera_image_path: /home/hwei/turbo/src/python/camera_stream/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
-    mock_camera_image_path: null                                                           # real mode — captures from USB camera
+    # mock_camera_image_path: /app/mock_webcam_image.jpg  # mock mode — serves a static image instead of webcam
+    mock_camera_image_path: null                      # real mode — captures from USB camera
 
 main_plotter_config:
 # service 4 is for junk stream
