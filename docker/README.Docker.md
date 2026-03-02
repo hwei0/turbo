@@ -14,63 +14,22 @@ If you want to build the Docker images locally instead of using the pre-built im
 ### Prerequisites
 
 - [Docker Engine](https://docs.docker.com/engine/install/) 24.0+ with [Docker Compose V2](https://docs.docker.com/compose/install/)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU inference)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (**server only** — needed for GPU inference; not required on the client, or if using [mock inference mode](../README.md#mock-modes))
+- Rust 1.70+ (for building QUIC transport binaries; install from [rustup.rs](https://rustup.rs/))
+- USB webcams (**client only** — or use [mock camera mode](../README.md#mock-modes) for testing without cameras)
 - Linux (tested on Ubuntu 20.04+)
 
-Verify your setup:
-```bash
-docker compose version   # should be v2.20+
-nvidia-smi               # should show your GPU(s)
-docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU in Docker
-```
+See the main README's [Prerequisites](../README.md#prerequisites) section for Docker version warnings, disk space requirements, and setup verification commands.
 
 ### Setup
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/NetSys/turbo.git
-   cd turbo
-   ```
+> **Running on separate machines?** If you are running the client and server on different hosts, perform all steps on **both** machines. Within step 1, the model download is server-only and the eval data download is client-only.
 
-2. <a id="model-setup-docker"></a>**Download fine-tuned EfficientDet model checkpoints (server only):**
+1. **Complete shared setup steps:**
 
-   The system uses custom EfficientDet models (D1, D2, D4, D6, D7x) fine-tuned on the [Waymo Open Dataset](https://waymo.com/open/) for 5-class object detection (vehicle, pedestrian, cyclist, sign, unknown).
+   Follow **steps 1–3** from the [Quick Start Setup](../README.md#setup) in the main README to clone the repository, download model checkpoints (server only), and download evaluation data (client only).
 
-   Our fine-tuned models can be downloaded and extracted as follows:
-
-   ```bash
-   # Download the model archive
-   wget https://storage.googleapis.com/turbo-nines-2026/av-models.zip
-
-   # Extract to your home directory (creates ~/av-models/)
-   unzip av-models.zip -d ~
-   ```
-
-   See [docs/MODELS.md](../docs/MODELS.md) for detailed model information.
-
-   > **IMPORTANT — Waymo Open Dataset License Notice**
-   >
-   > The fine-tuned EfficientDet model weights provided above were developed using the [Waymo Open Dataset](https://waymo.com/open/) and are released under the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/). By downloading or using these model weights, you agree that:
-   >
-   > 1. These models are for **non-commercial use only**. Any use, modification, or redistribution is subject to the terms of the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/), including the non-commercial restrictions therein.
-   > 2. Any further downstream use or modification of these models is subject to the same agreement.
-   > 3. A statement of the applicable Waymo Dataset License terms is included in this repository at [WAYMO_LICENSE](../WAYMO_LICENSE). The full agreement is available at [waymo.com/open/terms](https://waymo.com/open/terms/).
-   >
-   > These models were made using the Waymo Open Dataset, provided by Waymo LLC.
-
-3. **Download pre-computed evaluation data (client only):**
-
-   The client requires pre-computed full evaluation data for utility curve computation. Download and extract as follows:
-
-   ```bash
-   # Download the evaluation data archive
-   wget https://storage.googleapis.com/turbo-nines-2026/full-eval.zip
-
-   # Extract to your home directory (creates ~/full-eval/)
-   unzip full-eval.zip -d ~
-   ```
-
-4. **Generate SSL keys for QUIC:**
+2. **Generate SSL keys for QUIC (both client and server):**
 
    The QUIC binaries embed SSL certificates at compile time via Rust's `include_str!()` macro (see [SSL Certificates](#ssl-certificates)). You must generate them before building:
 
@@ -81,7 +40,7 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
    cd ../..
    ```
 
-5. **Configure the `.env` file:**
+3. **Configure the `.env` file (both client and server):**
 
    ```bash
    cp docker/.env.example docker/.env
@@ -99,7 +58,7 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
 
    Most other settings (networking, ports, SSL paths) work out of the box for same-host testing. See [Additional Configuration](#additional-configuration) below for the full reference.
 
-6. **Create the experiment output directory:**
+4. **Create the experiment output directory (both client and server):**
    ```bash
    mkdir -p ~/experiment2-out
    ```
@@ -126,7 +85,7 @@ docker compose --profile server up --build
 docker compose --profile client up --build
 ```
 
-Once running, open the monitoring dashboard at **http://localhost:5000**.
+Once the client is running, open the monitoring dashboard at **http://localhost:5000**.
 
 **Shut down:**
 ```bash

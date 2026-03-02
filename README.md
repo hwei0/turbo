@@ -99,20 +99,32 @@ The recommended way to run TURBO is with Docker using pre-built container images
 
 ### Prerequisites
 
-- [Docker Engine](https://docs.docker.com/engine/install/) 24.0+ with [Docker Compose V2](https://docs.docker.com/compose/install/)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU inference)
+- [Docker Engine](https://docs.docker.com/engine/install/) 24.0+ with the [Docker Compose V2 plugin](https://docs.docker.com/compose/install/linux/) (see notes below). **Avoid Docker 28** — it seems to be incompatible with `nf_tables` for iptables, which can cause networking issues with container-to-container communication. Docker 27 is recommended.
+- [NVIDIA GPU drivers](https://www.nvidia.com/en-us/drivers/) and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (**server only** — needed for GPU inference; not required on the client, or if using [mock inference mode](#mock-modes))
+- USB webcams (**client only** — or use [mock camera mode](#mock-modes) for testing without cameras)
 - Linux (tested on Ubuntu 20.04+)
+- Disk space:
+  - **Client:** ~50 GB (7 GB for evaluation data; 10 GB for Docker images; ~30 GB recommended minimum for experiment output)
+  - **Server:** ~13 GB (2 GB for model checkpoints; 10 GB for Docker images; 1 GB recommended for experiment output)
+
+> **No GPU?** You can run the server side without a GPU by setting `MOCK_INFERENCE=true` in your `.env` file, which skips GPU model loading and returns pre-recorded detection results. See [Mock Modes](#mock-modes) for details. If using mock inference, you can skip the NVIDIA Container Toolkit prerequisite and the model checkpoint download (step 2).
+
+> **Docker Compose V2:** This project requires the Docker Compose V2 *plugin* (the `docker compose` subcommand), not the legacy standalone `docker-compose` binary. If `docker compose version` shows an error or is not found, install the plugin following the [official instructions](https://docs.docker.com/compose/install/linux/). On Ubuntu: `sudo apt-get install docker-compose-plugin`.
 
 Verify your setup:
 ```bash
 docker compose version   # should be v2.20+
+
+# Server only — skip these if running client only or using mock inference
 nvidia-smi               # should show your GPU(s)
 docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU in Docker
 ```
 
 ### Setup
 
-1. **Clone the repository:**
+> **Running on separate machines?** If you are running the client and server on different hosts, perform steps 1, 4, and 5 on **both** machines. Step 2 is server-only and step 3 is client-only.
+
+1. **Clone the repository (both client and server):**
    ```bash
    git clone https://github.com/NetSys/turbo.git
    cd turbo
@@ -156,7 +168,7 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
    unzip full-eval.zip -d ~
    ```
 
-4. **Configure the `.env` file:**
+4. **Configure the `.env` file (both client and server):**
 
    ```bash
    cp .env.example .env
@@ -164,17 +176,17 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
 
    Edit `.env` and update the following values to match your host system:
 
-   | Variable | Description | Default |
+   | Variable | Description | Quickstart value |
    |---|---|---|
    | `HOST_UID` | Your host user ID (run `id -u`) | `1000` |
    | `HOST_GID` | Your host group ID (run `id -g`) | `1000` |
-   | `EXPERIMENT_OUTPUT_DIR` | Absolute path for experiment output | (must set) |
-   | `EFFDET_MODELS_DIR` | Absolute path to model checkpoints (server) | (must set) |
-   | `MODEL_FULL_EVAL_DIR` | Absolute path to evaluation data (client) | (must set) |
+   | `EXPERIMENT_OUTPUT_DIR` | Absolute path for experiment output | `~/experiment2-out` |
+   | `EFFDET_MODELS_DIR` | Absolute path to model checkpoints (server) | `~/av-models` |
+   | `MODEL_FULL_EVAL_DIR` | Absolute path to evaluation data (client) | `~/full-eval` |
 
-   Most other settings (networking, ports) work out of the box for same-host testing. See [docker/README.Docker.md](docker/README.Docker.md#additional-configuration) for the full configuration reference.
+   If you followed the download steps above, set `EFFDET_MODELS_DIR=~/av-models` and `MODEL_FULL_EVAL_DIR=~/full-eval`. Most other settings (networking, ports) work out of the box for same-host testing. See [docker/README.Docker.md](docker/README.Docker.md#additional-configuration) for the full configuration reference.
 
-5. **Create the experiment output directory:**
+5. **Create the experiment output directory (both client and server):**
    ```bash
    mkdir -p ~/experiment2-out
    ```
@@ -201,7 +213,7 @@ docker compose --profile server up
 docker compose --profile client up
 ```
 
-Once running, open the monitoring dashboard at **http://localhost:5000**.
+Once the client is running, open the monitoring dashboard at **http://localhost:5000**.
 
 **Shut down:**
 ```bash
@@ -229,7 +241,6 @@ If you prefer to run each process directly on your host without Docker, follow t
 - Python 3.10; preferably managed via [uv](https://docs.astral.sh/uv/) (alternatively, via [Anaconda](https://anaconda.org/), specifically the [`Miniconda3-py310_25.11.1-1` release version on this page](https://repo.anaconda.com/miniconda/))
 - Rust 1.70+ (for QUIC transport)
 - USB webcams (or video sources)
-- Linux (tested on Ubuntu 20.04+)
 - Needed dependencies for `OpenCV` -- (e.g. `sudo apt-get update && sudo apt-get install ffmpeg libsm6 libxext6`)
 
 **Server (Cloud) side:**
@@ -237,7 +248,6 @@ If you prefer to run each process directly on your host without Docker, follow t
 - CUDA-capable GPU (tested on H100, A100)
 - PyTorch 2.0+
 - Rust 1.70+ (for QUIC transport)
-- Fine-tuned EfficientDet model checkpoints (see [Model Setup](#model-setup) above)
 - Needed dependencies for `OpenCV` -- (e.g. `sudo apt-get update && sudo apt-get install ffmpeg libsm6 libxext6`)
 
 ### Installation
