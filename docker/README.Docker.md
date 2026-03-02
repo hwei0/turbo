@@ -343,3 +343,40 @@ docker compose --profile client --profile server up
 ```
 
 To prevent this, always shut down cleanly with `docker compose down` before restarting Docker or the host. If orphaned bridges recur, a Docker daemon restart (`sudo systemctl restart docker`) followed by removing any remaining orphans is the most reliable fix.
+
+**QUIC handshake timeout (`MaxHandshakeDurationExceeded`) on separate-host deployment — stale nftables rules:**
+If the QUIC client container can't reach an external server IP (but the host can), the cause is likely **stale nftables/iptables rules** referencing old Docker bridge interfaces. Docker generates firewall rules (FORWARD, MASQUERADE, etc.) that reference bridge interfaces by name (e.g. `br-a1b2c3d4e5f6`). When Docker networks are recreated (e.g. after `docker compose down` + `up`, or a Docker restart), the new network may get a different bridge name, but the old nftables rules persist — referencing bridges that no longer exist. Since the FORWARD chain has `policy drop`, traffic from the new bridge is silently dropped and never reaches the external network.
+
+To diagnose, confirm the packet is being dropped inside Docker networking:
+```bash
+# Send a UDP packet from inside a container on quic_net
+docker run --rm --network <project>_quic_net alpine:3.18 \
+  sh -c 'echo test | nc -u -w1 <server_ip> <port>'
+
+# Meanwhile, on the server host, check if the packet arrives
+sudo tcpdump -i any udp port <port>
+```
+If the packet never arrives at the server (but a similar test from the host works), check the nftables rules:
+```bash
+sudo nft list ruleset
+```
+Look at the `DOCKER-FORWARD` chain in `table ip filter` — the `iifname` accept rules and `MASQUERADE` rules should reference bridge interfaces that actually exist (`ip link show type bridge`). If they reference bridges that don't exist, the rules are stale.
+
+To fix, flush the stale nftables rules and let Docker regenerate them:
+```bash
+# Stop all compose projects
+docker compose --profile client --profile server down
+
+# Remove unused networks
+docker network prune -f
+
+# Flush ALL nftables rules (Docker will regenerate its own on restart)
+sudo nft flush ruleset
+
+# Restart Docker to regenerate clean rules
+sudo systemctl restart docker
+
+# Bring the stack back up
+docker compose --profile client up -d
+```
+The key step is `nft flush ruleset` — without it, `systemctl restart docker` may not replace the stale rules. After the restart, verify that `sudo nft list chain ip filter DOCKER-FORWARD` references bridges matching the output of `ip link show type bridge`.
