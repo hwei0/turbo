@@ -91,11 +91,11 @@ Running on a GPU-equipped cloud instance (e.g., H100):
 
 For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Quick Start (Docker) — Recommended
+## Quick Start (Docker with Pre-Built Images) — Recommended
 
 The recommended way to run TURBO is with Docker using pre-built container images published on [DockerHub](https://hub.docker.com/u/hbwei). The Docker setup automatically orchestrates all processes — 2 on the server (QUIC server + model servers) and 3 on the client (client orchestrator + web dashboard + QUIC client) — handling startup ordering, ZMQ socket management, and inter-process communication for you.
 
-> **Pre-built images vs. building from source:** The root-level `compose.yaml` and `.env.example` are configured to pull pre-built images from DockerHub. To build Docker images from source instead (e.g., for development or customization), see the [`docker/`](docker/) directory which contains Dockerfiles, a separate `compose.yaml` for building, and [docker/README.Docker.md](docker/README.Docker.md#building-from-source) for full instructions.
+> **Other setup methods:** To build Docker images from source instead of using pre-built images, see [Alternative 1: Docker Building from Source](#alternative-1-docker-building-from-source). To run without Docker at all, see [Alternative 2: Manual Setup](#alternative-2-manual-setup-without-docker).
 
 ### Prerequisites
 
@@ -239,12 +239,20 @@ For troubleshooting, architecture details, and development workflows, see [docke
 
 ---
 
-## Alternative: Manual Setup (without Docker)
+## Alternative 1: Docker Building from Source
+
+If you want to build the Docker images locally instead of using the pre-built images (e.g., for development or customization), see [docker/README.Docker.md](docker/README.Docker.md#building-from-source) for full setup, build, and run instructions. The `docker/` directory contains its own `compose.yaml`, `.env.example`, and Dockerfiles.
+
+---
+
+## Alternative 2: Manual Setup (without Docker)
+
+> **This approach is discouraged.** Manual setup requires installing all dependencies (Python, Rust, system libraries) by hand on both client and server machines, carefully managing process startup order, and manually cleaning up ZMQ sockets and shared memory between runs. The Docker-based methods above handle all of this automatically. Use manual setup only if you have a specific reason to avoid Docker.
 
 <details>
 <summary>Click to expand manual setup instructions</summary>
 
-If you prefer to run each process directly on your host without Docker, follow the steps below. This requires installing all dependencies (Python, Rust, system libraries) manually on both client and server machines, and carefully managing process startup order.
+Follow the steps below to run each process directly on your host without Docker.
 
 ### Prerequisites
 
@@ -277,7 +285,7 @@ If you prefer to run each process directly on your host without Docker, follow t
    ```
    </details>
 
-2. **Download model checkpoints and evaluation data** — follow steps 2 and 3 from the [Docker Quick Start](#quick-start-docker--recommended) above.
+2. **Download model checkpoints and evaluation data** — follow steps 2 and 3 from the [Quick Start](#quick-start-docker-with-pre-built-images--recommended) above.
 
    After extraction, update the checkpoint paths in your server configuration file (`config/server_config_gcloud.yaml`) and model config (`src/python/model_server/model_config.yaml`) to point to the extracted checkpoint files. Also ensure the `full_eval_dir` path in `config/client_config.yaml` points to the extracted `~/full-eval/` directory.
 
@@ -410,9 +418,9 @@ TURBO supports two independent mock modes for testing and development without re
 
 ### Enabling Mock Modes
 
-Follow the instructions for whichever setup method you used — [Quick Start (Docker)](#quick-start-docker--recommended), [Building from Source](docker/README.Docker.md#building-from-source), or [Manual Setup](#alternative-manual-setup-without-docker).
+Follow the instructions below that correspond to the setup method you used — [Quick Start](#quick-start-docker-with-pre-built-images--recommended), [Alternative 1](#alternative-1-docker-building-from-source), or [Alternative 2](#alternative-2-manual-setup-without-docker).
 
-#### Docker with Pre-Built Images (Recommended)
+#### Quick Start: Docker with Pre-Built Images
 
 Set environment variables in `.env` (at the repo root):
 
@@ -430,7 +438,7 @@ docker compose --profile client --profile server up
 
 Omit `-f compose.gpu.yaml` when using mock inference, since no GPU is needed.
 
-#### Docker Building from Source
+#### Alternative 1: Docker Building from Source
 
 Set environment variables in `docker/.env`:
 
@@ -449,7 +457,7 @@ docker compose --profile client --profile server up --build
 
 See [docker/README.Docker.md](docker/README.Docker.md#mock-modes) for details.
 
-#### Manual Setup (without Docker)
+#### Alternative 2: Manual Setup (without Docker)
 
 Pass CLI flags to the Python entry points:
 

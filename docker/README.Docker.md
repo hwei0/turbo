@@ -2,14 +2,14 @@
 
 This directory contains everything needed to **build Docker images from source** — Dockerfiles, a build-oriented `compose.yaml`, and shared configuration files. It is intended for development and customization, **not** for running pre-built images.
 
-- **To run TURBO using pre-built images** (recommended), use the root-level `compose.yaml` and `.env.example`. See the [Quick Start (Docker)](../README.md#quick-start-docker--recommended) section in the main README.
+- **To run TURBO using pre-built images** (recommended), use the root-level `compose.yaml` and `.env.example`. See the [Quick Start (Docker with Pre-Built Images)](../README.md#quick-start-docker-with-pre-built-images--recommended) section in the main README.
 - **To build images from source**, use the `compose.yaml` and `.env.example` in this directory. See [Building from Source](#building-from-source) below.
 
 The `docker/config/` directory contains Docker-specific YAML configs shared by both workflows.
 
 ## Building from Source
 
-If you want to build the Docker images locally instead of using the pre-built images (e.g., for development or customization), follow these steps.
+This section corresponds to [Alternative 1: Docker Building from Source](../README.md#alternative-1-docker-building-from-source) in the main README. If you want to build the Docker images locally instead of using the pre-built images (e.g., for development or customization), follow these steps.
 
 ### Prerequisites
 
