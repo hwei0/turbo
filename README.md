@@ -403,33 +403,18 @@ If you prefer to run each process directly on your host without Docker, follow t
 
 ## Mock Modes
 
-TURBO supports two independent mock modes for testing and development without requiring physical cameras or GPUs. Mock modes are enabled via **CLI flags** on `client_main.py` and `server_main.py`. The YAML config files specify which mock files to use; the CLI flag controls whether they are actually applied.
+TURBO supports two independent mock modes for testing and development without requiring physical cameras or GPUs:
 
-### Mock Camera Mode (Client-Side)
+- **Mock Camera** (client-side): Replaces live USB camera capture with a static image. Note that the `full-eval` evaluation data is still required — the bandwidth allocator uses it for utility curve computation regardless of camera mode.
+- **Mock Inference** (server-side): Skips GPU model loading and returns pre-recorded detection results. Optionally simulates per-model inference latency using a CSV of benchmark timings. The `av-models` model checkpoints are **not needed** in this mode (model loading is completely bypassed), though the Docker bind mount for `EFFDET_MODELS_DIR` still requires an existing directory — an empty one is fine.
 
-Replaces live USB camera capture with a static image. Pass `--mock-camera` to `client_main.py` to enable. Note that the `full-eval` evaluation data is still required — the bandwidth allocator uses it for utility curve computation regardless of camera mode.
+### Enabling Mock Modes
 
-```bash
-# Manual setup
-uv run client_main.py -c ../../config/client_config.yaml -s <SERVER_IP:PORT> --mock-camera
-```
+Follow the instructions for whichever setup method you used — [Quick Start (Docker)](#quick-start-docker--recommended), [Building from Source](docker/README.Docker.md#building-from-source), or [Manual Setup](#alternative-manual-setup-without-docker).
 
-The image path is configured per camera in `camera_stream_config_list` via the `mock_camera_image_path` key. A sample mock image is included at `src/python/camera_stream/mock_webcam_image.jpg`. Without `--mock-camera`, this path is ignored and real USB cameras are used.
+#### Docker with Pre-Built Images (Recommended)
 
-### Mock Inference Mode (Server-Side)
-
-Skips GPU model loading and returns pre-recorded detection results. Pass `--mock-inference` to `server_main.py` to enable. Optionally simulates per-model inference latency using a CSV of benchmark timings. The `av-models` model checkpoints are **not needed** in this mode (model loading is completely bypassed), though the Docker bind mount for `EFFDET_MODELS_DIR` still requires an existing directory — an empty one is fine.
-
-```bash
-# Manual setup
-uv run server_main.py -c ../../config/server_config_gcloud.yaml --mock-inference
-```
-
-The mock files are configured per server in `server_config_list` via `mock_inference_output_path` (numpy array of detections) and `mock_model_latency_csv_path` (per-model latency benchmarks). A sample mock output is included at `src/python/camera_stream/example_effdet_d4_output.npy`. Without `--mock-inference`, these paths are ignored and real GPU inference is used.
-
-### Docker
-
-In Docker, mock modes are controlled via environment variables in `.env` (or `docker/.env` when building from source):
+Set environment variables in `.env` (at the repo root):
 
 ```bash
 # Set to any non-empty value (e.g. "true") to enable, leave empty to disable
@@ -437,7 +422,51 @@ MOCK_CAMERA=true
 MOCK_INFERENCE=true
 ```
 
+Then run as usual — for example, to run both client and server in full mock mode (no cameras, no GPU):
+
+```bash
+docker compose --profile client --profile server up
+```
+
+Omit `-f compose.gpu.yaml` when using mock inference, since no GPU is needed.
+
+#### Docker Building from Source
+
+Set environment variables in `docker/.env`:
+
+```bash
+# Set to any non-empty value (e.g. "true") to enable, leave empty to disable
+MOCK_CAMERA=true
+MOCK_INFERENCE=true
+```
+
+Then build and run from the `docker/` directory:
+
+```bash
+cd docker
+docker compose --profile client --profile server up --build
+```
+
 See [docker/README.Docker.md](docker/README.Docker.md#mock-modes) for details.
+
+#### Manual Setup (without Docker)
+
+Pass CLI flags to the Python entry points:
+
+```bash
+# Client-side: mock camera
+uv run client_main.py -c ../../config/client_config.yaml -s <SERVER_IP:PORT> --mock-camera
+
+# Server-side: mock inference
+uv run server_main.py -c ../../config/server_config_gcloud.yaml --mock-inference
+```
+
+### Mock File Configuration
+
+The YAML config files specify which mock files to use; the CLI flag (or Docker env var) controls whether they are actually applied.
+
+- **Mock camera image:** Configured per camera in `camera_stream_config_list` via the `mock_camera_image_path` key. A sample mock image is included at `src/python/camera_stream/mock_webcam_image.jpg`. Without mock camera enabled, this path is ignored and real USB cameras are used.
+- **Mock inference output:** Configured per server in `server_config_list` via `mock_inference_output_path` (numpy array of detections) and `mock_model_latency_csv_path` (per-model latency benchmarks). A sample mock output is included at `src/python/camera_stream/example_effdet_d4_output.npy`. Without mock inference enabled, these paths are ignored and real GPU inference is used.
 
 ### Combining Mock Modes
 
