@@ -54,13 +54,6 @@ services:
     stop_grace_period: 30s
     user: "${HOST_UID}:${HOST_GID}"
     image: ${DOCKERHUB_USERNAME}/turbo-python-client:${IMAGE_TAG:-latest}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     volumes:
       - health_signals:/health
       - type: bind
@@ -103,13 +96,6 @@ services:
     stop_grace_period: 30s
     user: "${HOST_UID}:${HOST_GID}"
     image: ${DOCKERHUB_USERNAME}/turbo-python-server:${IMAGE_TAG:-latest}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     volumes:
       - type: bind
         source: ${PYTHON_DOCKER_SERVER_CONFIG_PATH}

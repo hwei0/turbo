@@ -1,0 +1,11 @@
+# GPU override — include this file on hosts with NVIDIA GPUs.
+# Usage: docker compose -f compose.yaml -f compose.gpu.yaml --profile server up
+services:
+  server_python_main:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

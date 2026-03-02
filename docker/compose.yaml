@@ -123,13 +123,6 @@ services:
     init: true
     ipc: host
     stop_grace_period: 30s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     build:
       context: ..
       target: final
@@ -180,13 +173,6 @@ services:
     init: true
     ipc: host
     stop_grace_period: 30s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     build:
       context: ..
       target: final

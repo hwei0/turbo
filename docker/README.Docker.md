@@ -15,7 +15,6 @@ If you want to build the Docker images locally instead of using the pre-built im
 
 - [Docker Engine](https://docs.docker.com/engine/install/) 24.0+ with [Docker Compose V2](https://docs.docker.com/compose/install/)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (**server only** — needed for GPU inference; not required on the client, or if using [mock inference mode](../README.md#mock-modes))
-- Rust 1.70+ (for building QUIC transport binaries; install from [rustup.rs](https://rustup.rs/))
 - USB webcams (**client only** — or use [mock camera mode](../README.md#mock-modes) for testing without cameras)
 - Linux (tested on Ubuntu 20.04+)
 
@@ -70,19 +69,26 @@ All Docker commands should be run from the `docker/` directory:
 cd docker
 ```
 
-**Build and run both client and server on the same host:**
+**GPU setup:** If the server host has NVIDIA GPUs (required for real inference, not needed for [mock inference](../README.md#mock-modes)), include the GPU override file by adding `-f compose.gpu.yaml` to all `docker compose` commands. Non-GPU hosts can omit it.
+
+**Build and run both client and server on the same host (with GPU):**
 ```bash
-docker compose --profile client --profile server up --build
+docker compose -f compose.yaml -f compose.gpu.yaml --profile client --profile server up --build
 ```
 
 **Build and run server only** (e.g., on a cloud GPU machine):
 ```bash
-docker compose --profile server up --build
+docker compose -f compose.yaml -f compose.gpu.yaml --profile server up --build
 ```
 
 **Build and run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
 ```bash
 docker compose --profile client up --build
+```
+
+**Build and run server with mock inference (no GPU needed):**
+```bash
+docker compose --profile server up --build
 ```
 
 Once the client is running, open the monitoring dashboard at **http://localhost:5000**.

@@ -104,10 +104,10 @@ The recommended way to run TURBO is with Docker using pre-built container images
 - USB webcams (**client only** — or use [mock camera mode](#mock-modes) for testing without cameras)
 - Linux (tested on Ubuntu 20.04+)
 - Disk space:
-  - **Client:** ~50 GB (7 GB for evaluation data; 10 GB for Docker images; ~30 GB recommended minimum for experiment output)
-  - **Server:** ~13 GB (2 GB for model checkpoints; 10 GB for Docker images; 1 GB recommended for experiment output)
+  - **Client:** ~50 GB (7 GB for evaluation data; 10 GB for Docker images; ~30 GB recommended minimum for experiment output). Note: evaluation data is required even in [mock camera mode](#mock-modes) — the bandwidth allocator always needs it for utility curve computation.
+  - **Server:** ~13 GB (2 GB for model checkpoints; 10 GB for Docker images; 1 GB recommended for experiment output). With [mock inference mode](#mock-modes), model checkpoints are not needed, reducing this to ~11 GB.
 
-> **No GPU?** You can run the server side without a GPU by setting `MOCK_INFERENCE=true` in your `.env` file, which skips GPU model loading and returns pre-recorded detection results. See [Mock Modes](#mock-modes) for details. If using mock inference, you can skip the NVIDIA Container Toolkit prerequisite and the model checkpoint download (step 2).
+> **No GPU?** You can run the server side without a GPU by setting `MOCK_INFERENCE=true` in your `.env` file and omitting the `-f compose.gpu.yaml` override. This skips GPU model loading and returns pre-recorded detection results. See [Mock Modes](#mock-modes) for details. If using mock inference, you can skip the NVIDIA Container Toolkit prerequisite and the model checkpoint download (step 2), but you must still set `EFFDET_MODELS_DIR` to a valid (possibly empty) directory since Docker bind-mounts it unconditionally — e.g., `mkdir -p ~/av-models`.
 
 > **Docker Compose V2:** This project requires the Docker Compose V2 *plugin* (the `docker compose` subcommand), not the legacy standalone `docker-compose` binary. If `docker compose version` shows an error or is not found, install the plugin following the [official instructions](https://docs.docker.com/compose/install/linux/). On Ubuntu: `sudo apt-get install docker-compose-plugin`.
 
@@ -198,19 +198,26 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
 docker compose --profile client --profile server pull
 ```
 
-**Run both client and server on the same host:**
+**GPU setup:** If the server host has NVIDIA GPUs (required for real inference, not needed for [mock inference](#mock-modes)), include the GPU override file by adding `-f compose.gpu.yaml` to all `docker compose` commands. Non-GPU hosts can omit it.
+
+**Run both client and server on the same host (with GPU):**
 ```bash
-docker compose --profile client --profile server up
+docker compose -f compose.yaml -f compose.gpu.yaml --profile client --profile server up
 ```
 
 **Run server only** (e.g., on a cloud GPU machine):
 ```bash
-docker compose --profile server up
+docker compose -f compose.yaml -f compose.gpu.yaml --profile server up
 ```
 
 **Run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
 ```bash
 docker compose --profile client up
+```
+
+**Run server with mock inference (no GPU needed):**
+```bash
+docker compose --profile server up
 ```
 
 Once the client is running, open the monitoring dashboard at **http://localhost:5000**.
@@ -396,7 +403,7 @@ TURBO supports two independent mock modes for testing and development without re
 
 ### Mock Camera Mode (Client-Side)
 
-Replaces live USB camera capture with a static image. Pass `--mock-camera` to `client_main.py` to enable.
+Replaces live USB camera capture with a static image. Pass `--mock-camera` to `client_main.py` to enable. Note that the `full-eval` evaluation data is still required — the bandwidth allocator uses it for utility curve computation regardless of camera mode.
 
 ```bash
 # Manual setup
@@ -407,7 +414,7 @@ The image path is configured per camera in `camera_stream_config_list` via the `
 
 ### Mock Inference Mode (Server-Side)
 
-Skips GPU model loading and returns pre-recorded detection results. Pass `--mock-inference` to `server_main.py` to enable. Optionally simulates per-model inference latency using a CSV of benchmark timings.
+Skips GPU model loading and returns pre-recorded detection results. Pass `--mock-inference` to `server_main.py` to enable. Optionally simulates per-model inference latency using a CSV of benchmark timings. The `av-models` model checkpoints are **not needed** in this mode (model loading is completely bypassed), though the Docker bind mount for `EFFDET_MODELS_DIR` still requires an existing directory — an empty one is fine.
 
 ```bash
 # Manual setup
@@ -432,12 +439,12 @@ See [docker/README.Docker.md](docker/README.Docker.md#mock-modes) for details.
 
 The two mock modes are fully independent — you can use any combination:
 
-| Camera Mock | Inference Mock | Use Case |
-|---|---|---|
-| Off | Off | **Production** — real cameras, real GPU inference |
-| On | Off | Test the full pipeline without cameras (still needs GPU) |
-| Off | On | Test camera capture and transport without GPU |
-| On | On | **Full mock** — test the entire system without cameras or GPU |
+| Camera Mock | Inference Mock | Use Case | Data Required |
+|---|---|---|---|
+| Off | Off | **Production** — real cameras, real GPU inference | `full-eval` + `av-models` |
+| On | Off | Test the full pipeline without cameras (still needs GPU) | `full-eval` + `av-models` |
+| Off | On | Test camera capture and transport without GPU | `full-eval` only |
+| On | On | **Full mock** — test the entire system without cameras or GPU | `full-eval` only |
 
 ## Documentation
 
