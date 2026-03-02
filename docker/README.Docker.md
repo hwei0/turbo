@@ -144,7 +144,14 @@ When running client and server on the **same host**, the default `QUIC_CLIENT_AD
 
 The `docker/config/` directory contains YAML config files that mirror the main `config/` files but with container-internal paths (e.g. `/app/experiment2-out` instead of `~/experiment2-out`). These are bind-mounted into each container at runtime.
 
-You generally don't need to edit these unless you're changing service behavior (e.g. number of cameras, model variants, SLO timeouts). If you do, edit the files in `docker/config/` — not the ones in the repo root `config/` directory.
+Most settings work out of the box, but the following **hardware-specific values** may need to be updated to match your setup:
+
+| File | Setting | Default | When to change |
+|---|---|---|---|
+| `server_config_gcloud_docker.yaml` | `device` per service | `cuda:0`, `cuda:1`, `cuda:2` | If you have fewer than 3 GPUs — e.g., set all to `"cuda:0"` for a single-GPU machine |
+| `client_config_docker.yaml` | `usb_id` per camera | `0`, `4`, `8` | If using real cameras (not mock mode) — update to match your system's USB device IDs |
+
+For other changes (e.g. number of cameras, model variants, SLO timeouts), edit the files in `docker/config/` — not the ones in the repo root `config/` directory.
 
 ### Mock Modes
 
@@ -273,6 +280,19 @@ docker compose --profile client --profile server down
 docker compose --profile client --profile server up
 ```
 
+**Network subnet overlap ("Pool overlaps with other one on this address space"):**
+Both `compose.yaml` (pre-built) and `docker/compose.yaml` (build-from-source) define `quic_net` with the same `10.64.89.0/24` subnet. If you previously ran one workflow and then switch to the other without cleaning up, the old network still exists under a different project name (e.g. `docker_quic_net` vs `turbo_quic_net`), and Docker refuses to create a second network with the same subnet. Remove the stale network:
+```bash
+# List networks to find the conflicting one
+docker network ls
+
+# Remove the stale network (e.g. from a previous build-from-source run)
+docker network rm docker_quic_net docker_default
+
+# Or from a previous pre-built run
+docker network rm turbo_quic_net turbo_default
+```
+
 **Stale POSIX shared memory after ungraceful shutdown:**
 Because all services use `ipc: host`, POSIX shared memory segments live in the host's `/dev/shm` and survive container restarts. If a container is force-killed (SIGKILL, OOM, Docker timeout, power loss) before cleanup runs, stale segments remain and cause `FileExistsError: [Errno 17] File exists` on the next startup. To clean them up:
 ```bash
@@ -292,3 +312,34 @@ ZMQ socket directories use tmpfs volumes that start empty on every `docker compo
 ```bash
 docker compose --profile client --profile server down -v
 ```
+
+**QUIC handshake timeout (`MaxHandshakeDurationExceeded`) on same-host deployment:**
+If the QUIC client fails with `MaxHandshakeDurationExceeded` when running client and server on the same host, the most likely cause is **orphaned Docker bridge interfaces** that conflict with the `quic_net` subnet (`10.64.89.0/24`). This happens when Docker fails to clean up Linux bridge interfaces after removing networks — for example, after a `docker compose down`, a Docker daemon restart, or a system reboot. The orphaned bridge retains the same IP (`10.64.89.1/24`) as the new `quic_net` bridge, creating duplicate routes in the kernel. Packets from the QUIC client to the gateway (`10.64.89.1`) get routed to the dead orphan bridge instead of the active one, so they never reach the host and the server never sees the connection attempt.
+
+To diagnose, check if containers on `quic_net` can reach the gateway at all:
+```bash
+docker run --rm --network <project>_quic_net alpine:3.18 ping -c2 -W2 10.64.89.1
+```
+If this shows 100% packet loss, check for orphaned bridge interfaces:
+```bash
+# List all bridge interfaces on the system
+ip -br link show type bridge
+
+# Compare against active Docker networks
+docker network ls
+
+# Bridge names use the format br-<network_id_prefix>.
+# Any bridge that doesn't match an active Docker network ID is orphaned.
+```
+
+To fix, remove the orphaned bridges and restart the compose stack:
+```bash
+# Remove each orphaned bridge (example — use the actual interface names from the step above)
+sudo ip link delete br-XXXXXXXXXXXX
+
+# Restart
+docker compose down
+docker compose --profile client --profile server up
+```
+
+To prevent this, always shut down cleanly with `docker compose down` before restarting Docker or the host. If orphaned bridges recur, a Docker daemon restart (`sudo systemctl restart docker`) followed by removing any remaining orphans is the most reliable fix.

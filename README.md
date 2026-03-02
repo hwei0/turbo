@@ -186,6 +186,10 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
 
    If you followed the download steps above, set `EFFDET_MODELS_DIR=~/av-models` and `MODEL_FULL_EVAL_DIR=~/full-eval`. Most other settings (networking, ports) work out of the box for same-host testing. See [docker/README.Docker.md](docker/README.Docker.md#additional-configuration) for the full configuration reference.
 
+   > **Hardware-specific YAML config changes:** Depending on your hardware, you may also need to edit the Docker YAML config files in [`docker/config/`](docker/config/):
+   > - **GPU device assignment (server):** [`docker/config/server_config_gcloud_docker.yaml`](docker/config/server_config_gcloud_docker.yaml) assigns each of the 3 model services to a separate GPU (`cuda:0`, `cuda:1`, `cuda:2`). If you have fewer than 3 GPUs, update the `device` fields to match your setup (e.g., set all to `"cuda:0"` for a single-GPU machine).
+   > - **USB camera IDs (client):** [`docker/config/client_config_docker.yaml`](docker/config/client_config_docker.yaml) maps cameras to USB device IDs (`usb_id: 0`, `4`, `8`). If using real cameras (not mock mode), update these to match your system's device IDs.
+
 5. **Create the experiment output directory (both client and server):**
    ```bash
    mkdir -p ~/experiment2-out
