@@ -8,10 +8,11 @@ ARG EXECUTABLE_NAME
 
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
-ARG GID=515
-ARG UID=999
+ARG GID=1000
+ARG UID=1000
 
 # Setup a non-root user
+RUN groupadd --system --gid ${GID} nonroot
 RUN useradd --system --gid ${GID} --uid ${UID} --create-home nonroot
 USER nonroot
 

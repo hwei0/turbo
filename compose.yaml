@@ -1,75 +1,14 @@
 services:
-  rust_base:
-    profiles: ['client', 'server']
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile_turbo_rust_base
-      args:
-        APP_NAME_LIST: "client,server"
-        SSL_CERT_PATH: ${SSL_CERT_PATH}
-        SSL_KEY_PATH: ${SSL_KEY_PATH}
-    develop:
-      watch:
-        - action: rebuild
-          path: ./src/quic/quic_conn
-        - action: rebuild
-          path: ./src/quic/quic_server
-        - action: rebuild
-          path: ./src/quic/quic_client
-        - action: rebuild
-          path: ./src/quic/Cargo.toml
-        - action: rebuild
-          path: ./src/quic/Cargo.lock
-        - action: rebuild
-          path: ${SSL_KEY_PATH}
-        - action: rebuild
-          path: ${SSL_CERT_PATH}
-        - action: rebuild
-          path: ./docker
-
-  python_base:
-    profiles: ['client', 'server']
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile_turbo_python_base
-    develop:
-      watch:
-        - action: rebuild
-          path: ./uv.lock
-        - action: rebuild
-          path: ./pyproject.toml
-        - action: sync
-          path: ./src/python
-          target: /app/src/python
-          ignore:
-            - .venv/
-        - action: rebuild
-          path: ./docker
-  
   quic_client:
     profiles: ['client']
-    # Use tini as PID 1 so Docker's SIGTERM is forwarded to the actual process.
-    # Without init, our process would be PID 1, and the Linux kernel silently
-    # drops signals with default handlers for PID 1 — causing the process to
-    # ignore SIGTERM and get SIGKILL'd after the grace period.
     init: true
     ipc: host
     stop_grace_period: 30s
+    user: "${HOST_UID}:${HOST_GID}"
+    image: ${DOCKERHUB_USERNAME}/turbo-quic-client:${IMAGE_TAG:-latest}
     depends_on:
       client_python_monitor:
         condition: service_healthy
-    build:
-      context: ..
-      target: final
-      dockerfile: ./docker/Dockerfile_turbo_quic_binary
-      args:
-        APP_NAME: "client"
-        QUIC_BIND_ADDR: ${QUIC_CLIENT_ADDR}
-        QUIC_DOCKER_PORT: ${QUIC_CLIENT_PORT}
-        GID: ${HOST_GID}
-        UID: ${HOST_UID}
-      additional_contexts:
-        base_image: "service:rust_base"
     environment:
       RUST_LOG: ${RUST_LOG}
       RUST_BACKTRACE: ${RUST_BACKTRACE}
@@ -91,18 +30,8 @@ services:
     init: true
     ipc: host
     stop_grace_period: 30s
-    build:
-      context: ..
-      target: final
-      dockerfile: ./docker/Dockerfile_turbo_quic_binary
-      args:
-        APP_NAME: "server"
-        QUIC_BIND_ADDR: ${QUIC_SERVER_ADDR}
-        QUIC_DOCKER_PORT: ${QUIC_SERVER_PORT}
-        GID: ${HOST_GID}
-        UID: ${HOST_UID}
-      additional_contexts:
-        base_image: "service:rust_base"
+    user: "${HOST_UID}:${HOST_GID}"
+    image: ${DOCKERHUB_USERNAME}/turbo-quic-server:${IMAGE_TAG:-latest}
     environment:
       RUST_LOG: ${RUST_LOG}
       RUST_BACKTRACE: ${RUST_BACKTRACE}
@@ -123,6 +52,8 @@ services:
     init: true
     ipc: host
     stop_grace_period: 30s
+    user: "${HOST_UID}:${HOST_GID}"
+    image: ${DOCKERHUB_USERNAME}/turbo-python-client:${IMAGE_TAG:-latest}
     deploy:
       resources:
         reservations:
@@ -130,17 +61,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    build:
-      context: ..
-      target: final
-      dockerfile: ./docker/Dockerfile_turbo_python_binary
-      additional_contexts:
-        base_image: "service:python_base"
-      args:
-        EXECUTABLE_DIR: ./src/python
-        EXECUTABLE_NAME: client_main.py
-        GID: ${HOST_GID}
-        UID: ${HOST_UID}
     volumes:
       - health_signals:/health
       - type: bind
@@ -175,11 +95,14 @@ services:
       timeout: 3s
       start_period: 30s
       retries: 30
+
   server_python_main:
     profiles: ['server']
     init: true
     ipc: host
     stop_grace_period: 30s
+    user: "${HOST_UID}:${HOST_GID}"
+    image: ${DOCKERHUB_USERNAME}/turbo-python-server:${IMAGE_TAG:-latest}
     deploy:
       resources:
         reservations:
@@ -187,17 +110,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    build:
-      context: ..
-      target: final
-      dockerfile: ./docker/Dockerfile_turbo_python_binary
-      additional_contexts:
-        base_image: "service:python_base"
-      args:
-        EXECUTABLE_DIR: ./src/python
-        EXECUTABLE_NAME: server_main.py
-        GID: ${HOST_GID}
-        UID: ${HOST_UID}
     volumes:
       - type: bind
         source: ${PYTHON_DOCKER_SERVER_CONFIG_PATH}
@@ -225,25 +137,17 @@ services:
         read_only: true
     command: >
       bash -c 'cd src/python && exec python server_main.py -c /app/python_config.yaml ${MOCK_INFERENCE:+--mock-inference}'
+
   client_python_monitor:
     profiles: ['client']
     init: true
     ipc: host
     stop_grace_period: 30s
+    user: "${HOST_UID}:${HOST_GID}"
+    image: ${DOCKERHUB_USERNAME}/turbo-python-monitor:${IMAGE_TAG:-latest}
     depends_on:
       client_python_main:
         condition: service_healthy
-    build:
-      context: ..
-      target: final
-      dockerfile: ./docker/Dockerfile_turbo_python_binary
-      additional_contexts:
-        base_image: "service:python_base"
-      args:
-        EXECUTABLE_DIR: ./src/python/web_frontend
-        EXECUTABLE_NAME: start_web_dashboard.py
-        GID: ${HOST_GID}
-        UID: ${HOST_UID}
     volumes:
       - health_signals:/health
       - type: bind
@@ -262,12 +166,14 @@ services:
       timeout: 3s
       start_period: 30s
       retries: 30
+
 networks:
   quic_net:
     ipam:
       config:
         - subnet: 10.64.89.0/24
           gateway: 10.64.89.1
+
 volumes:
   health_signals:
     driver: local
@@ -284,5 +190,3 @@ volumes:
     driver_opts:
       type: tmpfs
       device: tmpfs
-
-

@@ -1,8 +1,141 @@
-# Docker Setup for TURBO
+# Docker: Building from Source & Reference
 
-This Docker configuration containerizes the TURBO research prototype for local development and experimentation. It is **not intended for production use**.
+This directory contains everything needed to **build Docker images from source** — Dockerfiles, a build-oriented `compose.yaml`, and shared configuration files. It is intended for development and customization, **not** for running pre-built images.
 
-For setup and running instructions, see the [Quick Start (Docker)](../README.md#quick-start-docker--recommended) section in the main README. This document covers additional details: services overview, configuration reference, development workflow, architecture notes, and troubleshooting.
+- **To run TURBO using pre-built images** (recommended), use the root-level `compose.yaml` and `.env.example`. See the [Quick Start (Docker)](../README.md#quick-start-docker--recommended) section in the main README.
+- **To build images from source**, use the `compose.yaml` and `.env.example` in this directory. See [Building from Source](#building-from-source) below.
+
+The `docker/config/` directory contains Docker-specific YAML configs shared by both workflows.
+
+## Building from Source
+
+If you want to build the Docker images locally instead of using the pre-built images (e.g., for development or customization), follow these steps.
+
+### Prerequisites
+
+- [Docker Engine](https://docs.docker.com/engine/install/) 24.0+ with [Docker Compose V2](https://docs.docker.com/compose/install/)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (for GPU inference)
+- Linux (tested on Ubuntu 20.04+)
+
+Verify your setup:
+```bash
+docker compose version   # should be v2.20+
+nvidia-smi               # should show your GPU(s)
+docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU in Docker
+```
+
+### Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/NetSys/turbo.git
+   cd turbo
+   ```
+
+2. <a id="model-setup-docker"></a>**Download fine-tuned EfficientDet model checkpoints (server only):**
+
+   The system uses custom EfficientDet models (D1, D2, D4, D6, D7x) fine-tuned on the [Waymo Open Dataset](https://waymo.com/open/) for 5-class object detection (vehicle, pedestrian, cyclist, sign, unknown).
+
+   Our fine-tuned models can be downloaded and extracted as follows:
+
+   ```bash
+   # Download the model archive
+   wget https://storage.googleapis.com/turbo-nines-2026/av-models.zip
+
+   # Extract to your home directory (creates ~/av-models/)
+   unzip av-models.zip -d ~
+   ```
+
+   See [docs/MODELS.md](../docs/MODELS.md) for detailed model information.
+
+   > **IMPORTANT — Waymo Open Dataset License Notice**
+   >
+   > The fine-tuned EfficientDet model weights provided above were developed using the [Waymo Open Dataset](https://waymo.com/open/) and are released under the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/). By downloading or using these model weights, you agree that:
+   >
+   > 1. These models are for **non-commercial use only**. Any use, modification, or redistribution is subject to the terms of the [Waymo Dataset License Agreement for Non-Commercial Use](https://waymo.com/open/terms/), including the non-commercial restrictions therein.
+   > 2. Any further downstream use or modification of these models is subject to the same agreement.
+   > 3. A statement of the applicable Waymo Dataset License terms is included in this repository at [WAYMO_LICENSE](../WAYMO_LICENSE). The full agreement is available at [waymo.com/open/terms](https://waymo.com/open/terms/).
+   >
+   > These models were made using the Waymo Open Dataset, provided by Waymo LLC.
+
+3. **Download pre-computed evaluation data (client only):**
+
+   The client requires pre-computed full evaluation data for utility curve computation. Download and extract as follows:
+
+   ```bash
+   # Download the evaluation data archive
+   wget https://storage.googleapis.com/turbo-nines-2026/full-eval.zip
+
+   # Extract to your home directory (creates ~/full-eval/)
+   unzip full-eval.zip -d ~
+   ```
+
+4. **Generate SSL keys for QUIC:**
+
+   The QUIC binaries embed SSL certificates at compile time via Rust's `include_str!()` macro (see [SSL Certificates](#ssl-certificates)). You must generate them before building:
+
+   ```bash
+   cd src/quic
+   pip install cryptography   # if not already installed
+   python generate_cert.py
+   cd ../..
+   ```
+
+5. **Configure the `.env` file:**
+
+   ```bash
+   cp docker/.env.example docker/.env
+   ```
+
+   Edit `docker/.env` and update the following values to match your host system:
+
+   | Variable | Description | Default |
+   |---|---|---|
+   | `HOST_UID` | Your host user ID (run `id -u`) | `1000` |
+   | `HOST_GID` | Your host group ID (run `id -g`) | `1000` |
+   | `EXPERIMENT_OUTPUT_DIR` | Absolute path for experiment output | (must set) |
+   | `EFFDET_MODELS_DIR` | Absolute path to model checkpoints (server) | (must set) |
+   | `MODEL_FULL_EVAL_DIR` | Absolute path to evaluation data (client) | (must set) |
+
+   Most other settings (networking, ports, SSL paths) work out of the box for same-host testing. See [Additional Configuration](#additional-configuration) below for the full reference.
+
+6. **Create the experiment output directory:**
+   ```bash
+   mkdir -p ~/experiment2-out
+   ```
+
+### Build and Run
+
+All Docker commands should be run from the `docker/` directory:
+```bash
+cd docker
+```
+
+**Build and run both client and server on the same host:**
+```bash
+docker compose --profile client --profile server up --build
+```
+
+**Build and run server only** (e.g., on a cloud GPU machine):
+```bash
+docker compose --profile server up --build
+```
+
+**Build and run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
+```bash
+docker compose --profile client up --build
+```
+
+Once running, open the monitoring dashboard at **http://localhost:5000**.
+
+**Shut down:**
+```bash
+docker compose --profile client --profile server down -v
+```
+
+The `-v` flag removes ephemeral volumes (ZMQ sockets, health signals), giving you a clean slate for the next run.
+
+**Experiment output** will be logged to Parquet files in the configured output directory (default: `~/experiment2-out/`).
 
 ## Services Overview
 
@@ -22,7 +155,7 @@ Services start in dependency order via health checks: `client_python_main` must 
 
 ## Additional Configuration
 
-The [Quick Start](../README.md#quick-start-docker--recommended) covers the required `.env` variables (`HOST_UID`, `HOST_GID`, `EXPERIMENT_OUTPUT_DIR`, `EFFDET_MODELS_DIR`, `MODEL_FULL_EVAL_DIR`). The following additional variables are also available:
+The [Setup](#setup) section above covers the required `.env` variables (`HOST_UID`, `HOST_GID`, `EXPERIMENT_OUTPUT_DIR`, `EFFDET_MODELS_DIR`, `MODEL_FULL_EVAL_DIR`). The following additional variables are also available:
 
 **SSL (usually no changes needed):**
 
@@ -63,7 +196,7 @@ The mock data files (`mock_webcam_image.jpg`, `example_effdet_d4_output.npy`) ar
 
 ### Additional running commands
 
-Beyond the commands in the [Quick Start](../README.md#quick-start-docker--recommended), these are also useful:
+Beyond the commands in [Build and Run](#build-and-run), these are also useful:
 
 **Build all images without starting** (useful after Dockerfile changes):
 ```bash

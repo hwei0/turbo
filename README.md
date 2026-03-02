@@ -93,7 +93,9 @@ For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick Start (Docker) — Recommended
 
-The recommended way to run TURBO is with Docker. The Docker setup automatically orchestrates all processes — 2 on the server (QUIC server + model servers) and 3 on the client (client orchestrator + web dashboard + QUIC client) — handling startup ordering, ZMQ socket management, and inter-process communication for you.
+The recommended way to run TURBO is with Docker using pre-built container images published on [DockerHub](https://hub.docker.com/u/hbwei). The Docker setup automatically orchestrates all processes — 2 on the server (QUIC server + model servers) and 3 on the client (client orchestrator + web dashboard + QUIC client) — handling startup ordering, ZMQ socket management, and inter-process communication for you.
+
+> **Pre-built images vs. building from source:** The root-level `compose.yaml` and `.env.example` are configured to pull pre-built images from DockerHub. To build Docker images from source instead (e.g., for development or customization), see the [`docker/`](docker/) directory which contains Dockerfiles, a separate `compose.yaml` for building, and [docker/README.Docker.md](docker/README.Docker.md#building-from-source) for full instructions.
 
 ### Prerequisites
 
@@ -154,21 +156,13 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
    unzip full-eval.zip -d ~
    ```
 
-4. **Generate SSL keys for QUIC:**
-   ```bash
-   cd src/quic
-   pip install cryptography   # if not already installed
-   python generate_cert.py
-   cd ../..
-   ```
-
-5. **Configure the `.env` file:**
+4. **Configure the `.env` file:**
 
    ```bash
-   cp docker/.env.example docker/.env
+   cp .env.example .env
    ```
 
-   Edit `docker/.env` and update the following values to match your host system:
+   Edit `.env` and update the following values to match your host system:
 
    | Variable | Description | Default |
    |---|---|---|
@@ -178,33 +172,33 @@ docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi  # GPU
    | `EFFDET_MODELS_DIR` | Absolute path to model checkpoints (server) | (must set) |
    | `MODEL_FULL_EVAL_DIR` | Absolute path to evaluation data (client) | (must set) |
 
-   Most other settings (networking, ports, SSL paths) work out of the box for same-host testing. See [docker/README.Docker.md](docker/README.Docker.md) for the full reference.
+   Most other settings (networking, ports) work out of the box for same-host testing. See [docker/README.Docker.md](docker/README.Docker.md#additional-configuration) for the full configuration reference.
 
-6. **Create the experiment output directory:**
+5. **Create the experiment output directory:**
    ```bash
    mkdir -p ~/experiment2-out
    ```
 
 ### Running
 
-All Docker commands should be run from the `docker/` directory:
+**Pull the pre-built images:**
 ```bash
-cd docker
+docker compose --profile client --profile server pull
 ```
 
 **Run both client and server on the same host:**
 ```bash
-docker compose --profile client --profile server up --build
+docker compose --profile client --profile server up
 ```
 
 **Run server only** (e.g., on a cloud GPU machine):
 ```bash
-docker compose --profile server up --build
+docker compose --profile server up
 ```
 
 **Run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
 ```bash
-docker compose --profile client up --build
+docker compose --profile client up
 ```
 
 Once running, open the monitoring dashboard at **http://localhost:5000**.
@@ -218,7 +212,7 @@ The `-v` flag removes ephemeral volumes (ZMQ sockets, health signals), giving yo
 
 **Experiment output** will be logged to Parquet files in the configured output directory (default: `~/experiment2-out/`).
 
-For development workflows (hot-reload, rebuilding), troubleshooting, and architecture details, see [docker/README.Docker.md](docker/README.Docker.md).
+For troubleshooting, architecture details, and development workflows, see [docker/README.Docker.md](docker/README.Docker.md).
 
 ---
 
@@ -414,7 +408,7 @@ The mock files are configured per server in `server_config_list` via `mock_infer
 
 ### Docker
 
-In Docker, mock modes are controlled via environment variables in `docker/.env`:
+In Docker, mock modes are controlled via environment variables in `.env` (or `docker/.env` when building from source):
 
 ```bash
 # Set to any non-empty value (e.g. "true") to enable, leave empty to disable
@@ -463,12 +457,14 @@ An LP-based allocator runs every 500ms to select the optimal (model, compression
 
 ```
 turbo/
-├── docker/                          # Docker deployment (recommended)
-│   ├── compose.yaml                 # Docker Compose orchestration
-│   ├── .env.example                 # Template for configurable paths and settings
-│   ├── config/                      # Docker-specific YAML configs
+├── compose.yaml                     # Docker Compose for pre-built images (recommended)
+├── .env.example                     # Template for configurable paths and settings
+├── docker/                          # Building Docker images from source
+│   ├── compose.yaml                 # Docker Compose for building from source
+│   ├── .env.example                 # Template for build-from-source settings
+│   ├── config/                      # Docker-specific YAML configs (shared by both workflows)
 │   ├── Dockerfile_turbo_*           # Multi-stage Dockerfiles
-│   └── README.Docker.md             # Docker setup documentation
+│   └── README.Docker.md             # Build-from-source docs, configuration reference, troubleshooting
 ├── src/
 │   ├── python/
 │   │   ├── client_main.py           # Client-side process orchestrator
