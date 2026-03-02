@@ -214,7 +214,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml --profile client --profile se
 docker compose -f compose.yaml -f compose.gpu.yaml --profile server up
 ```
 
-**Run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
+**Run client only** (when server is running elsewhere — update `QUIC_CLIENT_REMOTE_ADDR` in `.env` to the server's IP):
 ```bash
 docker compose --profile client up
 ```

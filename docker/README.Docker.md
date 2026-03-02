@@ -81,7 +81,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml --profile client --profile se
 docker compose -f compose.yaml -f compose.gpu.yaml --profile server up --build
 ```
 
-**Build and run client only** (when server is running elsewhere — update `QUIC_CLIENT_ADDR` in `.env` to the server's IP):
+**Build and run client only** (when server is running elsewhere — update `QUIC_CLIENT_REMOTE_ADDR` in `.env` to the server's IP):
 ```bash
 docker compose --profile client up --build
 ```
@@ -133,12 +133,12 @@ The [Setup](#setup) section above covers the required `.env` variables (`HOST_UI
 
 | Variable | Description | Default |
 |---|---|---|
-| `QUIC_CLIENT_ADDR` | Address the QUIC client connects to | `10.64.89.1:12345` (Docker bridge gateway) |
+| `QUIC_CLIENT_REMOTE_ADDR` | Address the QUIC client connects to | `10.64.89.1:12345` (Docker bridge gateway) |
 | `QUIC_SERVER_ADDR` | Address the QUIC server binds to | `0.0.0.0:12345` |
 | `QUIC_SERVER_PORT` | UDP port exposed for QUIC | `12345` |
 | `DASHBOARD_PORT` | Host port for the web dashboard | `5000` |
 
-When running client and server on the **same host**, the default `QUIC_CLIENT_ADDR` of `10.64.89.1:12345` routes through the Docker bridge gateway to reach the server container. When running on **separate hosts**, set `QUIC_CLIENT_ADDR` to the server machine's routable IP and port.
+When running client and server on the **same host**, the default `QUIC_CLIENT_REMOTE_ADDR` of `10.64.89.1:12345` routes through the Docker bridge gateway to reach the server container. When running on **separate hosts**, set `QUIC_CLIENT_REMOTE_ADDR` to the server machine's routable IP and port.
 
 ### Docker-specific config files
 
@@ -204,9 +204,9 @@ docker compose --profile client --profile server watch
 - **tmpfs volumes** — ZeroMQ socket directories and health signal files use tmpfs-backed volumes for fast, ephemeral storage.
 - **Signal handling** — All services use `init: true` (tini) as PID 1 for proper signal forwarding and graceful shutdown. A 30-second grace period (`stop_grace_period`) is configured for each service. When you press Ctrl+C on `docker compose up`, Docker Compose sends **SIGTERM** (not SIGINT) to each container. Without `init: true`, the application would be PID 1, and the Linux kernel silently drops signals with default handlers for PID 1 — causing the process to ignore SIGTERM and get SIGKILL'd after the grace period. The Python orchestrators (`client_main.py`, `server_main.py`) explicitly handle both SIGTERM and SIGINT to trigger graceful shutdown (ZMQ kill-switch broadcast, shared memory unlink, Parquet flush).
 - **`exec` and `python` in Dockerfiles** — The Python Dockerfile uses `exec python` directly instead of `uv run`. `uv run` spawns Python as a child process and may not forward signals, which would prevent graceful shutdown. The venv is already on `PATH` (set in `Dockerfile_turbo_python_base`), so calling `python` directly works. The `exec` replaces the shell with the actual process, avoiding a redundant `/bin/sh` parent (optional with `init: true`, but good practice).
-- **Custom network** — A bridge network (`quic_net`, subnet `10.64.89.0/24`, gateway `10.64.89.1`) is used for QUIC communication. On same-host deployments, the QUIC client reaches the server through the bridge gateway (which routes to the host, where the server's UDP port is published). On separate-host deployments, `QUIC_CLIENT_ADDR` is set to the server machine's routable IP instead.
+- **Custom network** — A bridge network (`quic_net`, subnet `10.64.89.0/24`, gateway `10.64.89.1`) is used for QUIC communication. On same-host deployments, the QUIC client reaches the server through the bridge gateway (which routes to the host, where the server's UDP port is published). On separate-host deployments, `QUIC_CLIENT_REMOTE_ADDR` is set to the server machine's routable IP instead.
 - **QUIC uses UDP** — The server's port is published with the `/udp` protocol. Firewalls on the server host must allow inbound UDP on this port.
-- **Rust QUIC client requires IP addresses** — The Rust QUIC client parses addresses with `SocketAddr` and cannot resolve DNS hostnames. `QUIC_CLIENT_ADDR` must always be an `ip:port` pair (e.g. `10.64.89.1:12345`), not a hostname.
+- **Rust QUIC client requires IP addresses** — The Rust QUIC client parses addresses with `SocketAddr` and cannot resolve DNS hostnames. `QUIC_CLIENT_REMOTE_ADDR` must always be an `ip:port` pair (e.g. `10.64.89.1:12345`), not a hostname.
 - **Health signal synchronization** — `client_python_main` writes its health signal (`/health/client_main_ready`) only after all Client subprocesses have bound their `quic_rcv_zmq_socket`. This ensures the Rust QUIC client (which depends on this health signal via `client_python_monitor`) does not start until the Python ZMQ sockets are ready to accept connections. A `multiprocessing.Manager().Queue()` is used for this cross-process synchronization.
 
 ## Path Relativity Rules
@@ -245,7 +245,7 @@ docker compose --profile client logs client_python_main
 ```
 
 **QUIC connection failures between client and server on separate hosts:**
-Make sure `QUIC_CLIENT_ADDR` in `.env` is set to the server host's routable IP (not the Docker gateway), and that the `QUIC_SERVER_PORT` UDP port is open on the server host's firewall.
+Make sure `QUIC_CLIENT_REMOTE_ADDR` in `.env` is set to the server host's routable IP (not the Docker gateway), and that the `QUIC_SERVER_PORT` UDP port is open on the server host's firewall.
 
 **Bind mount shows "IsADirectoryError" or creates an unexpected directory:**
 When Docker bind-mounts a file but the source path doesn't exist on the host, Docker silently creates a **directory** at the target path instead of failing. This causes confusing errors like `IsADirectoryError: [Errno 21] Is a directory: '/app/python_config.yaml'`. Double-check that the source path in `.env` is correct and that the file exists. Remember that volume source paths are relative to the compose file location — see [Path Relativity Rules](#path-relativity-rules). After fixing the path, you must rebuild with `--build` since the stale directory may be cached in the image layer:

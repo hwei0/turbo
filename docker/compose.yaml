@@ -64,8 +64,7 @@ services:
       dockerfile: ./docker/Dockerfile_turbo_quic_binary
       args:
         APP_NAME: "client"
-        QUIC_BIND_ADDR: ${QUIC_CLIENT_ADDR}
-        QUIC_DOCKER_PORT: ${QUIC_CLIENT_PORT}
+        QUIC_BIND_ADDR: ${QUIC_CLIENT_REMOTE_ADDR}
         GID: ${HOST_GID}
         UID: ${HOST_UID}
       additional_contexts:
@@ -98,7 +97,6 @@ services:
       args:
         APP_NAME: "server"
         QUIC_BIND_ADDR: ${QUIC_SERVER_ADDR}
-        QUIC_DOCKER_PORT: ${QUIC_SERVER_PORT}
         GID: ${HOST_GID}
         UID: ${HOST_UID}
       additional_contexts:
@@ -161,7 +159,7 @@ services:
         target: /app/mock_webcam_image.jpg
         read_only: true
     command: >
-      bash -c 'cd src/python && exec python client_main.py -c /app/python_config.yaml -s ${QUIC_CLIENT_ADDR} ${MOCK_CAMERA:+--mock-camera}'
+      bash -c 'cd src/python && exec python client_main.py -c /app/python_config.yaml -s ${QUIC_CLIENT_REMOTE_ADDR} ${MOCK_CAMERA:+--mock-camera}'
     healthcheck:
       test: ["CMD", "test", "-f", "/health/client_main_ready"]
       interval: 2s
