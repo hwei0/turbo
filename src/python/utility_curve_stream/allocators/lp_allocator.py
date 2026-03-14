@@ -23,14 +23,17 @@ from utility_curve_stream.utility_curve_utils import CameraName
 
 class LPAllocator(AllocatorFn):
     def allocate(self, total_bandwidth, concrete_step_functions):
-        """
-        Solve the bandwidth allocation problem using linear programming with PuLP.
+        """Solve bandwidth allocation as an LP to maximize total detection utility.
 
-        This function uses the PuLP library to formulate and solve a linear programming problem that
-        maximizes the total utility of bandwidth allocation across multiple services. Each service has
-        a step function representing the utility values over different bandwidth intervals. The solver
-        determines the optimal bandwidth allocation for each service to maximize the overall utility,
-        subject to the total bandwidth constraint.
+        LP formulation:
+          Decision variables: y[i][j] ∈ {0,1} — whether service i selects model config j
+          Objective:   maximize Σ_i Σ_j  y[i][j] * utility[i][j]
+          Constraints:
+            (1) Σ_i Σ_j  y[i][j] * bw_needed[i][j]  ≤  total_bandwidth
+            (2) For each service i:  Σ_j y[i][j] = 1   (exactly one model config per service)
+
+        Each service's step function maps bandwidth intervals → utility values.
+        The LP picks the best model config per service such that total bandwidth is feasible.
         """
         max_intervals = max(
             csf.num_models() for _, csf in concrete_step_functions.items()

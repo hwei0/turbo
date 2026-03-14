@@ -27,6 +27,12 @@ use crate::{
     },
 };
 impl WeightedStreamManager {
+    /// Receives frames from the local Python process and enqueues them for QUIC transmission.
+    ///
+    /// Data flow: Python writes pickled image data to POSIX shared memory, then sends
+    /// a ZMQ multipart message containing [context_id, byte_size]. This loop copies
+    /// the data from SHM into an owned buffer, ACKs the Python process (so it can
+    /// reuse the SHM region), and enqueues the buffer for the send_loop.
     pub async fn read_zmq_socket_loop(
         &self,
         service_name: i32,
@@ -34,6 +40,8 @@ impl WeightedStreamManager {
         is_server: bool,
         terminate_signal: Arc<AtomicBool>,
     ) -> Result<()> {
+        // Map the POSIX shared memory region that the Python process writes image data into.
+        // The SHM file is created by Python before the Rust process starts; we only open it.
         let (_incoming_shm_fd, incoming_shm_addr) = unsafe {
             let shm_config = Arc::new(provide_read_zmq_socket_shm_config().await);
 
@@ -68,7 +76,10 @@ impl WeightedStreamManager {
             (fd, addr)
         };
 
-        info!("read_zmq_socket_loop: shared memory mapped for service={}, is_server={}", service_name, is_server);
+        info!(
+            "read_zmq_socket_loop: shared memory mapped for service={}, is_server={}",
+            service_name, is_server
+        );
 
         loop {
             if terminate_signal.load(Ordering::Relaxed) {
@@ -87,6 +98,11 @@ impl WeightedStreamManager {
 
                 return Ok(());
             }
+            // Block until Python sends a ZMQ multipart message signaling that
+            // new image data is ready in shared memory.
+            // Multipart format from Python (send_multipart):
+            //   part[0] = context_id (str-encoded i32, unique frame sequence number)
+            //   part[1] = byte_size  (str-encoded usize, number of bytes in SHM)
             let multipart = zmq_bidirectional_socket
                 .recv()
                 .await
@@ -111,7 +127,10 @@ impl WeightedStreamManager {
             )
             .expect("multipart[1] must be valid UTF-8")
             .parse()?;
-            debug!("service={}: image_context={}, image_size={}", self.service_name, image_context, image_size);
+            debug!(
+                "service={}: image_context={}, image_size={}",
+                self.service_name, image_context, image_size
+            );
 
             if self.enable_outgoing_image_context_log && !self.is_junk && image_context != -1 {
                 self.outgoing_image_context_log
@@ -135,7 +154,9 @@ impl WeightedStreamManager {
 
             let msg = Arc::new(Mutex::new(vec![0; image_size]));
 
-            // Copy from shared memory into the message buffer
+            // Copy image_size bytes from shared memory into an owned buffer.
+            // We must copy before ACKing because the ACK tells Python it can
+            // overwrite the SHM region with the next frame.
             unsafe {
                 memcpy(
                     msg.lock().await.as_mut_ptr() as *mut c_void,
@@ -143,6 +164,7 @@ impl WeightedStreamManager {
                     image_size,
                 );
             }
+            // ACK tells Python the SHM region is safe to reuse
             zmq_bidirectional_socket
                 .send("ack\0".to_string().into())
                 .await?;
@@ -182,6 +204,7 @@ impl WeightedStreamManager {
                     .await?;
             }
 
+            // Enqueue the retrieved shared memory contents, into our queue to prepare for QUIC trasmission.
             self.enqueue_msg(msg.lock_owned().await.to_owned(), image_context)
                 .await?;
 

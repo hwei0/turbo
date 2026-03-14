@@ -284,13 +284,13 @@ class CameraDataStream:
                 print(f"CameraDataStream: Error during __del__ cleanup: {e}")
 
     def refresh_image_loop(self):
-        """Background thread that continuously captures frames from the USB camera.
+        """Background thread that continuously captures frames from the USB camera. 
 
-        Runs in a tight loop reading frames from VideoCapture and writing them to
-        shared memory. Uses a lock to synchronize with the main request handler thread.
-        Gracefully exits when is_terminated is set.
+        Runs in a tight loop reading frames from VideoCapture and writing them to 
+        shared memory. Uses a lock to synchronize with the main request handler thread. 
+        Gracefully exits when is_terminated is set. 
 
-        In mock mode, writes the static mock image once and then sleeps until terminated.
+        In mock mode, writes the static mock image once and then sleeps until terminated. 
         """
         frame_count = 0
         LOGGER.info("refresh_image_loop started for service %d", self.camera_id)
@@ -326,7 +326,7 @@ class CameraDataStream:
                         f"CameraDataStream {self.camera_id} camera device closed unexpectedly"
                     )
 
-                # Read next frame from USB camera
+                # Read next frame from USB camera 
                 ret, frame = self.camera_capture.read()
                 frame_count += 1
 
@@ -341,16 +341,16 @@ class CameraDataStream:
                     time.sleep(1)  # Wait before retrying to avoid tight error loop
                     continue
 
-                # Try to acquire lock with timeout to update shared frame
-                # If lock not available (client is reading), skip this frame
+                # Try to acquire lock with timeout to update shared frame 
+                # If lock not available (client is reading), skip this frame 
                 if self.image_feed_lock.acquire(timeout=0.010):
                     try:
-                        # Convert BGR (OpenCV format) to RGB and write to shared memory
+                        # Convert BGR (OpenCV format) to RGB and write to shared memory 
                         cv2.cvtColor(
                             frame, dst=self.camera_stream_arr, code=cv2.COLOR_BGR2RGB
                         )
 
-                        # Update current frame and timestamp
+                        # Update current frame and timestamp 
                         self.curr_image_pil = Image.fromarray(self.camera_stream_arr)
                         self.curr_image_load_time = time.perf_counter()
 
@@ -411,6 +411,10 @@ class CameraDataStream:
                 continue
 
     def main_loop(self):
+        # Serves camera frames to Clients via a 2-phase ZMQ handshake over shared memory.
+        # Spawns refresh_image_loop in a background thread to continuously capture USB frames.
+        # On each Client request: acquires lock, sends frame metadata (frame data is in SHM),
+        # waits for Client ACK (confirming it copied the frame), then sends ACK-ACK and releases lock.
         try:
             self.thread_pool_manager.submit(CameraDataStream.refresh_image_loop, self)
             LOGGER.info(
@@ -440,6 +444,7 @@ class CameraDataStream:
                 if not self.bidirectional_zmq_socket.poll(timeout=100):
                     continue
 
+                # Receive request from Client
                 LOGGER.info(f"CameraDataStream{self.camera_id} received request")
                 recv_obj = self.bidirectional_zmq_socket.recv_pyobj()
 
@@ -462,7 +467,11 @@ class CameraDataStream:
                         f"Invalid message type in CameraDataStream {self.camera_id}: expected CameraDataRequest"
                     )
 
-                # Acquire lock to safely read current frame and timestamp
+                # Acquire image_feed_lock — shared with refresh_image_loop thread.
+                # While held, the refresh thread cannot overwrite the SHM buffer,
+                # guaranteeing the Client reads a consistent frame.
+                # Lock is held through the full 2-phase handshake:
+                #   send response → wait for Client ACK → send ACK-ACK
                 # TODO: Consider implementing double-buffering to reduce lock contention:
                 # Use two SHM buffers that alternate, allowing capture thread to write to one
                 # while request handler reads from the other. This would eliminate blocking.
@@ -482,7 +491,7 @@ class CameraDataStream:
                         this_image_age,
                     )
 
-                    # Send response metadata to Client (actual image data is in shared memory)
+                    # Send response metadata to Client (actual image data is in shared memory) 
                     self.bidirectional_zmq_socket.send_pyobj(
                         CameraDataResponse(
                             context_id=recv_obj.context_id, is_ack_response=False
@@ -491,6 +500,7 @@ class CameraDataStream:
 
                     LOGGER.info(f"CameraDataStream{self.camera_id} has sent response")
 
+                    # Wait for Client ACK confirming it has copied the frame from SHM
                     if not self.bidirectional_zmq_socket.poll(timeout=3000):
                         raise NetworkError(
                             f"Failed to receive ACK from main client for service {self.camera_id}"
@@ -508,6 +518,8 @@ class CameraDataStream:
                         self.cleanup()
                         return
 
+                    # Send ACK-ACK back to Client, completing the handshake.
+                    # After this, the lock is released and refresh thread can write new frames.
                     self.bidirectional_zmq_socket.send_pyobj(
                         CameraDataResponse(
                             context_id=recv_obj.context_id, is_ack_response=True
