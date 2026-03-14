@@ -236,12 +236,16 @@ class BandwidthAllocator:
     def main_loop(self) -> None:
         """Main loop for bandwidth allocation.
 
-        Continuously:
-        1. Polls for bandwidth updates from QUIC client
-        2. Requests current RTT from PingHandler
-        3. Runs LP solver to compute optimal allocation
-        4. Broadcasts allocation to clients and QUIC layer
-        5. Handles graceful shutdown via kill switch
+        On each bandwidth update from the QUIC client:
+        1. Query PingHandler for current RTT (with retry)
+        2. Run LP solver: maximize total expected detection utility across all services,
+           subject to total bandwidth constraint and per-service SLO timeout.
+           The solver selects, for each service, the best (EfficientDet variant, compression level)
+           pair from pre-computed utility curves.
+        3. Broadcast the resulting per-service model configs to:
+           - QUIC client (enforces per-service bandwidth rate limits at transport layer)
+           - Each Client process (adjusts preprocessing/compression pipeline accordingly)
+           - Web dashboard (real-time visualization)
         """
         LOGGER.info("BandwidthAllocator main loop starting")
 
@@ -249,7 +253,7 @@ class BandwidthAllocator:
 
             recv_str = None
 
-            # Poll for bandwidth update from QUIC client
+            # Poll for bandwidth update from QUIC client 
             if self.bidirectional_zmq_quic_socket.poll(timeout=250):
                 recv_str = self.bidirectional_zmq_quic_socket.recv_string()
 
@@ -266,13 +270,14 @@ class BandwidthAllocator:
             if recv_str is None:
                 continue
 
+            # Get bandwidth measure from QUIC handler
             recv_obj = json.loads(recv_str)
             LOGGER.info(
                 "BandwidthAllocator received bandwidth update: available_bw=%.2f Mbps",
                 recv_obj.get("bw", 0.0)
             )
 
-            # Request current RTT from PingHandler
+            # Request current RTT from PingHandler 
             self.bidirectional_zmq_ping_handler_socket.send_pyobj(1)
             rtt = None
             ping_attempts = 0
@@ -314,8 +319,8 @@ class BandwidthAllocator:
                 self.t_SLO
             )
 
-            # Compute optimal allocation using LP solver
-            # Returns: (utility without offloading, expected utility with offloading, allocations)
+            # Compute optimal allocation using LP solver 
+            # Returns: (utility without offloading, expected utility with offloading, allocations) 
             _, expected_utility, allocs = (
                 self.global_scene.eval_utilities_and_allocations_timestamp(
                     recv_obj["bw"], DEFAULT_TIMESTAMP, recv_obj["rtt"], self.t_SLO
@@ -328,7 +333,7 @@ class BandwidthAllocator:
                 allocs
             )
 
-            # Extract model configurations and bandwidth allocations per service
+            # Extract model configurations and bandwidth allocations per service 
             allocated_model_config = {
                 int(scenario): model_config_name
                 for (scenario, (_, model_config_name, _)) in allocs.items()
@@ -344,7 +349,7 @@ class BandwidthAllocator:
                 allocated_bws
             )
 
-            # Construct allocation update message for broadcast
+            # Construct allocation update message for broadcast 
             outgoing_resp = json.dumps(
                 {
                     "plot_id": BANDWIDTH_ALLOCATION_UPDATE,
@@ -358,8 +363,8 @@ class BandwidthAllocator:
                 }
             )
 
-            # Broadcast allocation to QUIC client (for rate limiting), Client processes
-            # (for preprocessing configuration), and web dashboard (for visualization)
+            # Broadcast allocation to QUIC client (for rate limiting), Client processes 
+            # (for preprocessing configuration), and web dashboard (for visualization) 
             self.bidirectional_zmq_quic_socket.send_string(outgoing_resp)
             for outgoing_client_sock in self.outgoing_zmq_client_socket_list:
                 outgoing_client_sock.send_string(outgoing_resp)

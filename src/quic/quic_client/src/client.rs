@@ -117,6 +117,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let _congestion_controller: Bbr = Bbr::default();
 
+    // RecoverySnapshot is atomically updated by s2n-quic's recovery event callback
+    // whenever the QUIC stack computes new RTT/CWND estimates. The bandwidth_refresh_loop
+    // reads these values to report network conditions to the Python BandwidthAllocator.
     let recovery_ptr = Arc::new(RecoverySnapshot {
         rtt: AtomicF64::new(5.),
         cwnd: AtomicU32::new(0),
@@ -127,6 +130,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         recovery_ptr: recovery_ptr.clone(),
     };
 
+    // Build the QUIC client with BBR congestion control. BBR (Bottleneck Bandwidth
+    // and RTT) is chosen over Cubic/Reno because it achieves higher throughput on
+    // lossy links without filling buffers, which is critical for real-time streaming.
     let client = Client::builder()
         .with_tls(CERT_PEM)?
         .with_io("0.0.0.0:0")?
@@ -174,6 +180,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     debug!("Connected to bandwidth service ZMQ socket");
 
     let mut init_allocation_map: HashMap<i32, f64> = HashMap::new();
+    // The junk service is always the last service in the config list by convention.
+    // It starts with 0 bandwidth and ramps up once real services begin sending,
+    // filling unused capacity to keep BBR's CWND estimate accurate.
     let junk_service: Option<i32> = if enable_junk_service {
         Some(
             services
@@ -188,7 +197,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         init_allocation_map.insert(
             *service,
             if junk_service.is_some() && *service == junk_service.unwrap() {
-                0.0
+                0.0 // Junk starts at 0; gets allocation from bandwidth_refresh_loop
             } else {
                 init_allocation
             },
@@ -210,24 +219,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let terminate_signal_arc = Arc::new(AtomicBool::new(false));
 
+    // For each perception service, set up ZMQ IPC channels and spawn three async tasks:
+    //   1. read_zmq_socket_loop: Python → SHM → TX queue (ingestion)
+    //   2. send_loop:            TX queue → QUIC stream (transmission)
+    //   3. read_stream_loop:     QUIC stream → SHM → Python (delivery)
     for service in services {
         let terminate_signal_arc_inner = terminate_signal_arc.clone();
         info!("Setting up service {}", service);
 
-        // order must be:
-        // THIS incoming socket binds here
-        // wait for python to bind on THIS outgoing socket
-        // connect on THIS outgoing socket
+        // "outgoing" = data leaving the QUIC system toward the local Python process
+        // "incoming" = data entering the QUIC system from the local Python process
         let mut outgoing_socket = zeromq::ReqSocket::new(); //outgoing means leaving the quic system, ie. to the processing client/server
         let mut incoming_socket = zeromq::RepSocket::new(); //incoming means going into the quic system, i.e. queuing up to be sent over quic connection.
         let service_string = service.to_string();
 
-        //order must be:
-        // clear the ZMQ directory
-        // python starts FIRST, creates SHM files, and binds on this outgoing socket
-        // AFTER python done, you connect on this outgoing socket, and bind on this incoming socket
-        // you send message to python that bind on this incoming is ready
-        //python responds, and then binds on this incoming socket
+        // ZMQ handshake protocol (must happen in this order):
+        //   1. Python starts first, creates SHM files, binds on outgoing socket
+        //   2. Rust connects to Python's outgoing socket, binds its own incoming socket
+        //   3. Rust sends "hello" to Python confirming incoming socket is ready
+        //   4. Python ACKs and begins sending data
+        // The junk service skips this — it has no Python counterpart.
         if !(junk_service.is_some() && junk_service.unwrap() == service) {
             info!("Client service {} beginning ZMQ handshake", service_string);
             outgoing_socket
@@ -261,6 +272,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let diagnostic_zmq_sockname1 =
             get_zmq_fullpath("car-client-diagnostics".to_string().as_str());
 
+        // Open a dedicated QUIC bidirectional stream for this service.
+        // The first 4 bytes sent are the service ID, so the server knows
+        // which Python ModelServer to route this stream's data to.
         info!("Opening bidirectional stream for service {}", service);
         let stream = connection.open_bidirectional_stream().await?;
         let (receive_stream, mut send_stream) = stream.split();
@@ -334,6 +348,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     info!("All services initialized, entering main loop");
 
+    // Spawn the bandwidth refresh loop: periodically sends current RTT/CWND to
+    // the Python BandwidthAllocator via ZMQ, receives updated per-service bandwidth
+    // allocations, and updates the BandwidthManager so each service's send_loop
+    // uses the correct byte budget.
     let terminate_signal_arc_clone4 = terminate_signal_arc.clone();
 
     tokio_context.join_set.lock().await.spawn(async move {

@@ -334,12 +334,12 @@ class Client:
             config.camera_np_size, dtype=np.uint8, buffer=self.camera_stream_shmem.buf
         )
 
-        # order must be:
-        # clear the ZMQ directory
-        # you start FIRST, create SHM file, and bind on this incoming socket
-        # rust starts AFTER you are done; you wait for rust to connect to this incoming socket, and for it to bind on this outgoing socket
-        # rust sends message that its bind on this outgoing socket is ready
-        # you connect to this outgoing socket
+        # Python↔Rust ZMQ startup ordering (must follow this sequence):
+        #   1. Python creates SHM files and binds on incoming ZMQ socket (REP)
+        #   2. Rust starts, connects to Python's incoming socket, binds its own outgoing socket
+        #   3. Rust sends "hello" to Python's incoming socket to signal readiness
+        #   4. Python receives "hello", then connects to Rust's outgoing socket
+        # This ensures both sides are ready before any data flows.
 
         self.quic_rcv_zmq_socket = self.context.socket(zmq.REP)
         self.quic_rcv_zmq_socket.bind(config.quic_rcv_zmq_sockname)
@@ -476,12 +476,15 @@ class Client:
     def main_loop(self) -> None:
         """Main processing loop for the client.
 
-        Continuously:
-        1. Receives bandwidth allocation updates
-        2. Requests camera frames
-        3. Applies preprocessing based on current model configuration
-        4. Sends inference requests via QUIC or processes locally
-        5. Enforces SLO timeouts and handles graceful shutdown
+        Each iteration represents one perception query cycle:
+        1. Check for kill signal or bandwidth allocation update (new model config)
+        2. Parse model config string → determines preprocessing pipeline + base model
+        3. Request + receive camera frame from CameraDataStream (ZMQ+SHM handshake)
+        4. Branch on model config:
+           a. LOCAL path (edd1): simulate on-vehicle inference, drain stale QUIC responses
+           b. REMOTE path: preprocess image → serialize to SHM → signal QUIC client →
+              listen for response with SLO timeout, dropping stale context_id mismatches
+        5. Log latency breakdown + detection results to Parquet, emit diagnostics
         """
         LOGGER.info(f"Client Main {self.service_id} is ready!")
         while True:
@@ -506,6 +509,7 @@ class Client:
                 # via their respective kill switches, not by individual clients
                 return
 
+            # Refresh model configuration from bandwidth allocator module
             if self.bandwidth_allocation_incoming_zmq_socket.poll(timeout=1):
                 LOGGER.info(
                     f"Client {self.service_id} received incoming bandwidth allocation message"
@@ -526,7 +530,9 @@ class Client:
                     f"Client {self.service_id} has set current model to {self.current_model}"
                 )
 
-            # Parse current model configuration string (e.g., "edd4-imgcomp50-inpcompNone")
+            # Parse model config string, e.g. "edd4-imgcomp50-inpcompNone"
+            # → model_num="4", model_imgcomp="50", model_inpcomp="None"
+            # → base_model="tf_efficientdet_d4", enable_image_processing=True, enable_compression=True
             currmodel = self.current_model
             match = MODEL_P.match(self.current_model)
             if not match:
@@ -538,7 +544,7 @@ class Client:
 
             model_num, model_imgcomp, model_inpcomp = match.groups()
 
-            # Determine preprocessing pipeline from model configuration
+            # Determine preprocessing pipeline from model configuration 
             enable_image_processing = model_imgcomp != "None"
             enable_input_processing = model_inpcomp != "None"
 
@@ -585,13 +591,13 @@ class Client:
             start_time_unix = time.time()
             start_time = time.perf_counter()
 
-            # Request latest camera frame from CameraDataStream
+            # Request latest camera frame from CameraDataStream 
             stream_request = CameraDataRequest(
                 is_ack_request=False, context_id=self.context_id_ctr
             )
             self.camera_bidirectional_zmq_socket.send_pyobj(stream_request)
 
-            # Wait for camera frame metadata (with retry loop)
+            # Wait for camera frame metadata (with retry loop) 
             while not self.camera_bidirectional_zmq_socket.poll(timeout=ZMQ_CAMERA_TIMEOUT_MS):
                 LOGGER.warning(
                     "Client %d waiting for camera frame response (context_id=%d)",
@@ -617,7 +623,7 @@ class Client:
                     # via their respective kill switches, not by individual clients
                     return
 
-
+            # Get response from camera stream
             stream_response = self.camera_bidirectional_zmq_socket.recv_pyobj()
             camera_recv_latency = time.perf_counter() - start_time
             LOGGER.debug("Camera frame metadata received for service %d (latency=%.3fms)",
@@ -643,7 +649,7 @@ class Client:
 
             camera_ack_latency = time.perf_counter() - start_time - camera_recv_latency
 
-            # ========== LOCAL MODEL PATH (edd1 - on-vehicle baseline) ==========
+            # ========== LOCAL MODEL PATH (edd1 - on-vehicle baseline) ========== 
             if self.current_model == "edd1-imgcompNone-inpcompNone":
                 LOGGER.info(
                     "Client %d using local on-vehicle model (edd1). No remote offloading.",
@@ -668,9 +674,9 @@ class Client:
                 # Sleep for a fraction of the SLO timeout to simulate local processing delay
                 time.sleep(self.SLO_TIMEOUT_MS * LOCAL_MODEL_SLO_FRACTION / 1000)
 
-                # Drain any stale responses from QUIC receive queue
-                # This prevents the QUIC client from blocking on unprocessed responses
-                # Queue draining is fast (~1ms per stale response) since we only send ACK
+                # Drain any stale responses from QUIC receive queue 
+                # This prevents the QUIC client from blocking on unprocessed responses 
+                # Queue draining is fast (~1ms per stale response) since we only send ACK 
                 # TODO(optimization): Send image_context in ZMQ message header to skip
                 # SHM read + unpickling for outdated responses (can check context_id before deserializing)
                 response_listen_start_time = time.perf_counter()
@@ -711,7 +717,7 @@ class Client:
 
                 # Set response to None to indicate local-only processing (no remote result)
                 response = None
-            # ========== REMOTE MODEL PATH (offload to server) ==========
+            # ========== REMOTE MODEL PATH (offload to server) ========== 
             else:
                 LOGGER.info(
                     "Client %d using remote model %s - will offload to server",
@@ -731,10 +737,15 @@ class Client:
 
                 remote_request_made = True
 
-                # Apply preprocessing pipeline based on model configuration
-                # Two main paths:
-                # 1. Image processing: compress raw image, server does resize+normalize
-                # 2. Input processing: client does resize+normalize, then compress
+                # PSEUDOCODE — Client-side preprocessing pipeline:
+                #   4 possible paths based on (image_proc, input_proc, compress):
+                #     1. image_proc + compress:    compress raw image (JPEG/PNG) → server decompresses + resizes + normalizes
+                #     2. image_proc + no compress: send raw PIL image → server resizes + normalizes
+                #     3. input_proc + no compress: client resizes + normalizes → send torch.Tensor directly
+                #     4. input_proc + compress:    client resizes + normalizes → transpose (C,H,W)→(H,W,C) → compress →
+                #                                  server decompresses → transpose back → reconstruct tensor
+                #   Tradeoff: image_proc = more network bytes, less client CPU;
+                #             input_proc = fewer bytes, more client CPU
                 if enable_image_processing:
                     if enable_compression:
                         # Compress raw image (JPEG or PNG)
@@ -749,7 +760,7 @@ class Client:
 
                 elif enable_input_processing:
                     if not enable_compression:
-                        # Resize + normalize to model input size (returns torch.Tensor)
+                        # Resize + normalize to model input size (returns torch.Tensor) 
                         this_image_pil = self.preprocess_fn_map[base_model](
                             this_image_pil
                         )
@@ -759,7 +770,7 @@ class Client:
                         )
 
                     elif enable_compression:
-                        # Resize + normalize using raw=True (returns np.ndarray)
+                        # Resize + normalize using raw=True (returns np.ndarray) 
                         this_image_pil = self.preprocess_fn_map_raw[base_model](
                             this_image_pil
                         )
@@ -778,7 +789,7 @@ class Client:
                             this_image_pil.shape
                         )
 
-                        # Compress the preprocessed input
+                        # Compress the preprocessed input 
                         this_image_pil = compress_image(
                             this_image_pil,
                             int(model_inpcomp) if model_inpcomp != "PNG" else None,
@@ -809,7 +820,10 @@ class Client:
                     preprocessing_delay * 1000
                 )
 
-                # Serialize request and write to shared memory for QUIC client
+                # Serialize request and write to SHM for QUIC client (Rust).
+                # SHM write + ZMQ signal is the Python→Rust IPC pattern used throughout:
+                #   Python writes pickled payload to SHM → sends payload length via ZMQ →
+                #   Rust reads length, copies payload from SHM, sends ACK via ZMQ
                 request_start_time = time.perf_counter()
 
                 request = ModelServerRequest(
@@ -835,7 +849,7 @@ class Client:
                     request_serialization_delay * 1000
                 )
 
-                # Signal QUIC client to transmit the request (send context_id and length via ZMQ)
+                # Signal QUIC client to transmit the request (send context_id and length via ZMQ) 
                 self.quic_snd_zmq_socket.send_multipart(
                     [
                         str.encode(str(self.context_id_ctr)),
@@ -843,7 +857,7 @@ class Client:
                     ]
                 )
 
-                # Wait for ACK from QUIC client confirming it has read the request from SHM
+                # Wait for ACK from QUIC client confirming it has read the request from SHM 
                 if not self.quic_snd_zmq_socket.poll(timeout=ZMQ_QUIC_TIMEOUT_MS):
                     LOGGER.error(
                         "Timeout waiting for QUIC ACK for service %d context_id %d",
@@ -871,12 +885,20 @@ class Client:
 
                 response = None
 
-                # Response listening loop with queue draining and SLO timeout enforcement
-                # Queue draining involves reading each outdated SHM message and sending ACK back.
-                # Overhead is ~1ms per queue item. This is efficient queue management.
-                # TODO: Optimize by sending image_context in ZMQ message header to skip
-                # SHM read + unpickling for outdated responses (check context_id before deserializing)
-                # TODO: Tune SLO timeout value based on empirical latency measurements
+                # PSEUDOCODE — Response listening with SLO timeout + queue draining:
+                #   while elapsed < SLO_TIMEOUT:
+                #     poll QUIC receive socket with remaining_timeout
+                #     if response arrives:
+                #       deserialize from SHM, send ACK to QUIC client
+                #       if response.context_id != current context_id:
+                #         discard (stale response from previous cycle), keep polling
+                #       else:
+                #         valid response found, break
+                #   if no valid response by SLO deadline → response = None (timeout)
+                #
+                # Queue draining overhead is ~1ms per stale item (SHM read + unpickle + ACK).
+                # TODO: Optimize by sending context_id in ZMQ message header to skip
+                # SHM read + unpickling for outdated responses
                 response_listen_start_time = time.perf_counter()
 
                 good_response_listen_delay = None
@@ -891,7 +913,7 @@ class Client:
                 )
 
                 while True:
-                    # Check if SLO timeout has been exceeded
+                    # Check if SLO timeout has been exceeded 
                     elapsed_since_camera_ms = (
                         time.perf_counter()
                         - start_time
@@ -925,7 +947,7 @@ class Client:
                         time.perf_counter() - response_listen_start_time
                     )
 
-                    # Receive response length from QUIC client
+                    # Receive response length from QUIC client 
                     response_len = int(self.quic_rcv_zmq_socket.recv_string(0))
                     LOGGER.debug(
                         "Client %d received response signal from QUIC: length=%d bytes",
@@ -933,7 +955,7 @@ class Client:
                         response_len
                     )
 
-                    # Deserialize response from shared memory
+                    # Deserialize response from shared memory 
                     response = pickle.loads(self.quic_rcv_shm.buf[:response_len])
 
                     good_response_deserialization_delay = (
@@ -942,7 +964,7 @@ class Client:
                         - good_response_listen_delay
                     )
 
-                    # Send ACK to QUIC client to confirm response has been read from SHM
+                    # Send ACK to QUIC client to confirm response has been read from SHM 
                     self.quic_rcv_zmq_socket.send_string("ACK")
 
                     LOGGER.debug(
@@ -968,7 +990,7 @@ class Client:
                         self.context_id_ctr
                     )
 
-                    # Check if response matches current context_id (drop stale responses)
+                    # Check if response matches current context_id (drop stale responses) 
                     if response.context_id != self.context_id_ctr:
                         stale_response_count += 1
                         LOGGER.info(
@@ -978,9 +1000,9 @@ class Client:
                             self.context_id_ctr
                         )
                         response = None
-                        continue  # Keep trying to listen until we get a relevant response, or timeout
+                        continue  # Keep trying to listen until we get a relevant response, or timeout 
 
-                    # Got a valid response matching our context_id; break to process it
+                    # Got a valid response matching our context_id; break to process it 
                     LOGGER.info(
                         "Client %d received valid response: context_id=%d, listen_delay=%.3fms, deser_delay=%.3fms, stale_dropped=%d",
                         self.service_id,

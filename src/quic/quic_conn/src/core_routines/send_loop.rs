@@ -26,6 +26,22 @@ use crate::managers::weighted_stream_manager::WeightedStreamManager;
 use crate::{logging::utils::RecordType, managers::queue_item::TxQueueItem};
 
 impl WeightedStreamManager {
+    /// Core transmission loop: dequeues frames and writes them to the QUIC stream,
+    /// enforcing per-service bandwidth limits and dropping stale frames that exceed
+    /// the SLO timeout.
+    ///
+    /// Each iteration:
+    ///   1. Refresh the bandwidth allocation from BandwidthManager (periodically)
+    ///   2. Sleep to pace transmissions (1ms for real services, configurable for junk)
+    ///   3. Compute the byte budget for this iteration: tx_bytes = bw * elapsed_time
+    ///   4. Dequeue frames, drop SLO-expired ones, and write up to tx_bytes to QUIC
+    ///   5. Flush the BufWriter to push buffered data into the QUIC stream
+    ///
+    /// Wire format per frame: [4B context_id (big-endian)] [4B payload_len (big-endian)] [payload]
+    /// The receiver (read_stream_loop) reads these three fields to reconstruct the frame.
+    ///
+    /// For the junk service: generates dummy zero-filled payloads each iteration to
+    /// probe the available network capacity beyond what real services are using.
     pub async fn send_loop(
         &self,
         zmq_diagnostic_sockname: String,
@@ -44,6 +60,9 @@ impl WeightedStreamManager {
         let mut curr_bw_poll_time = Instant::now();
         let mut curr_logging_time = Instant::now();
 
+        // Staging buffer: collects (payload_bytes, context_id, is_final_chunk) tuples
+        // before writing them to the QUIC stream. This separates the queue-draining
+        // phase (which holds the queue lock) from the I/O phase (which does async writes).
         let mut snd_vec: VecDeque<(Vec<u8>, i32, bool)> = VecDeque::with_capacity(1000000);
 
         let mut bw = self.bandwidth_manager.get_bw(self.service_name).await;
@@ -75,6 +94,10 @@ impl WeightedStreamManager {
 
                 return Ok(());
             }
+            // Periodically refresh the bandwidth allocation from the BandwidthManager.
+            // For the junk service, get_bw() returns 0 if any real service sent data
+            // within the last junk_restart_interval (see mark_active_send), which
+            // suppresses junk transmission to avoid competing with real traffic.
             if curr_bw_poll_time
                 .elapsed()
                 .gt(&self.timing_config.bw_polling_interval)
@@ -139,6 +162,12 @@ impl WeightedStreamManager {
                 num_bytes = 0;
             }
 
+            // Pacing sleep: controls how often we check the queue and transmit.
+            // - Junk service: sleeps for junk_tx_loop_interval (longer interval since
+            //   junk data is sent in larger bursts to probe available capacity).
+            // - Real services: sleeps 1ms to achieve fine-grained transmission pacing.
+            //   The 1ms granularity balances latency (smaller = more responsive) against
+            //   CPU overhead (smaller = more loop iterations per second).
             if self.is_junk {
                 if curr_time
                     .elapsed()
@@ -163,7 +192,11 @@ impl WeightedStreamManager {
                 }
             }
 
-            let mut tx_bytes = if self.is_junk {
+            // Compute the byte budget for this iteration:
+            // tx_bytes = allocated_bw (bytes/sec) * elapsed_time (sec).
+            // This enforces the bandwidth limit — we only send as many bytes as the
+            // allocation allows for the elapsed wall-clock time since the last iteration.
+            let mut tx_bytes = {
                 let raw = bw * curr_time.elapsed().as_secs_f64();
                 if raw > i64::MAX as f64 {
                     warn!(
@@ -180,8 +213,6 @@ impl WeightedStreamManager {
                 } else {
                     raw as i64
                 }
-            } else {
-                i64::MAX
             };
 
             // IMPORTANT: reset curr_time AFTER computing tx_bytes, since tx_bytes depends on elapsed time since the last iteration
@@ -189,6 +220,10 @@ impl WeightedStreamManager {
 
             let mut queue_vec = self.outgoing_queue.lock().await;
 
+            // Junk service: synthesize a dummy payload to fill the remaining bandwidth
+            // capacity. The junk service probes total available bandwidth — real services
+            // consume part of it, junk fills the rest, so BBR sees full utilization and
+            // reports accurate CWND/RTT to the bandwidth allocator.
             if self.is_junk {
                 let max_junk_bytes_raw = bw * self.timing_config.junk_tx_loop_interval.as_secs_f64();
                 let max_junk_bytes = if max_junk_bytes_raw > i64::MAX as f64 {
@@ -203,6 +238,7 @@ impl WeightedStreamManager {
                     max_junk_bytes_raw as i64
                 };
 
+                // Cap junk to whichever is smaller: the byte budget or one interval's worth
                 let junk_size = min(tx_bytes, max_junk_bytes).max(0) as usize;
                 queue_vec.push_front(TxQueueItem {
                     timestamp: Instant::now(),
@@ -212,6 +248,30 @@ impl WeightedStreamManager {
                 })
             }
 
+            // Drain the queue and stage frames into snd_vec for QUIC transmission.
+            //
+            // Pseudocode:
+            //   while we have byte budget remaining AND queue is non-empty:
+            //     pop front item from queue
+            //
+            //     if item is SLO-expired AND hasn't started transmitting (tx_idx == 0):
+            //       drop it (too stale to be useful to the receiver)
+            //       continue to next item
+            //
+            //     if this is a fresh item (tx_idx == 0):
+            //       stage the wire header: [4B context_id] [4B payload_len]
+            //
+            //     if item payload > remaining budget:
+            //       // PARTIAL SEND: drain only tx_bytes worth of data from the front
+            //       // of the payload, advance tx_idx, push item back to queue front
+            //       // so the remainder is sent in the next iteration
+            //       stage partial chunk, mark as non-final
+            //       push item back to front of queue
+            //       budget = 0
+            //     else:
+            //       // COMPLETE SEND: entire payload fits in budget
+            //       stage full payload, mark as is_final = true
+            //       budget -= payload.len()
             while tx_bytes > 0 && !queue_vec.is_empty() {
                 let mut queue_item = queue_vec
                     .pop_front()
@@ -234,6 +294,8 @@ impl WeightedStreamManager {
                     continue;
                 }
 
+                // First transmission of this frame: write the wire header
+                // (context_id + payload length) before the payload bytes
                 if queue_item.tx_idx == 0 {
                     snd_vec.push_back((
                         (queue_item.image_context.to_be_bytes().to_vec()),
@@ -256,6 +318,9 @@ impl WeightedStreamManager {
                 }
 
                 if queue_item.byte_data.len() as i64 > tx_bytes {
+                    // PARTIAL SEND: payload exceeds remaining byte budget.
+                    // Drain tx_bytes from the front of byte_data, advance tx_idx,
+                    // and push the item back to the queue front for next iteration.
                     let tx_idx_old = queue_item.tx_idx;
                     queue_item.tx_idx += tx_bytes as usize;
                     num_bytes += tx_bytes as i64;
@@ -275,7 +340,7 @@ impl WeightedStreamManager {
                     snd_vec.push_back((
                         queue_item.byte_data.drain(..(tx_bytes as usize)).collect(),
                         queue_item.image_context,
-                        false,
+                        false, // not the final chunk
                     ));
 
                     if !self.is_junk {
@@ -289,8 +354,10 @@ impl WeightedStreamManager {
                     }
 
                     tx_bytes = 0;
+                    // Re-queue with remaining bytes for next iteration
                     queue_vec.push_front(queue_item);
                 } else {
+                    // COMPLETE SEND: entire remaining payload fits within budget
                     tx_bytes -= queue_item.byte_data.len() as i64;
                     num_bytes += queue_item.byte_data.len() as i64;
 
@@ -319,14 +386,21 @@ impl WeightedStreamManager {
                     snd_vec.push_back((queue_item.byte_data, queue_item.image_context, true));
                 }
             }
+            // Release the queue lock before doing async I/O writes
             drop(queue_vec);
 
+            // Record that a real service just sent data. The junk service checks this
+            // timestamp via get_time_since_last_send(): if a real service sent recently
+            // (within junk_restart_interval), junk's get_bw() returns 0, suppressing
+            // junk transmission to avoid competing with real traffic.
             if !snd_vec.is_empty() && !self.is_junk {
                 self.bandwidth_manager.mark_active_send();
             }
 
             let snd_vec_empty = snd_vec.is_empty();
 
+            // Write all staged chunks to the QUIC stream via the 16MB BufWriter.
+            // Data is buffered here and only pushed to the network on flush() below.
             while !snd_vec.is_empty() {
                 // NOTE: using pop_front (not pop) because Vec::pop removes from the back
                 let (byte_data, image_context, is_final) = snd_vec
