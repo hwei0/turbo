@@ -80,6 +80,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let stream_manager_map =
         Arc::new(Mutex::new(HashMap::<i32, Arc<WeightedStreamManager>>::new()));
 
+    // Accept incoming QUIC connections. Each connection comes from one QUIC client
+    // and carries multiple bidirectional streams (one per perception service).
+    // For each stream, the client sends its service_id as the first 4 bytes, which
+    // handle_stream reads to route data to the correct Python ModelServer.
     while let Some(mut connection) = server.accept().await {
         connection
             .keep_alive(true)
@@ -93,6 +97,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             info!("Connection accepted from {:?}", connection.remote_addr());
             let recovery_ptr_clone_clone = recovery_ptr_clone.clone();
 
+            // Each bidirectional stream corresponds to one service
             while let Ok(Some(stream)) = connection.accept_bidirectional_stream().await {
                 // spawn a new task for the stream
                 let tasks_clone_clone = tasks_clone.clone(); // each spawned task needs its own Arc clone
@@ -118,6 +123,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 type TaskType = tokio::task::JoinHandle<std::result::Result<(), anyhow::Error>>;
+/// Sets up a single service's bidirectional QUIC stream on the server side.
+///
+/// Reads the service_id from the stream, performs a ZMQ handshake with the local
+/// Python ModelServer, creates a WeightedStreamManager with infinite bandwidth
+/// (server does not enforce rate limits — that's the client's job), and spawns
+/// the same three async tasks as the client (read_stream_loop, read_zmq_socket_loop,
+/// send_loop) plus a network metrics logger for RTT/CWND tracking.
 async fn handle_stream(
     stream: BidirectionalStream,
     tasks: Arc<Mutex<Vec<TaskType>>>,
@@ -127,6 +139,7 @@ async fn handle_stream(
     recovery_ptr: Arc<RecoverySnapshot>,
 ) {
     let (mut receive_stream, send_stream) = stream.split();
+    // Read the service ID that the client sent as the first 4 bytes
     let service_string = receive_stream
         .read_i32()
         .await
@@ -265,6 +278,9 @@ async fn handle_stream(
         info!("Server service {} ZMQ handshake complete", service_string);
     }
 
+    // Server uses f64::MAX (effectively unlimited) bandwidth for all services.
+    // Unlike the client, the server doesn't enforce bandwidth limits — the client
+    // controls transmission rates, and the server just processes whatever arrives.
     let mut infinite_allocation_map: HashMap<i32, f64> = HashMap::new();
     for service in services.iter() {
         infinite_allocation_map.insert(*service, f64::MAX);

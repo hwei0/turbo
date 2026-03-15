@@ -231,12 +231,12 @@ class ModelServer:
 
         self.context = zmq.Context()
 
-        # order must be:
-        # clear the ZMQ directory
-        # you start FIRST, create SHM file, and bind on this incoming socket
-        # rust starts AFTER you are done; you wait for rust to connect to this incoming socket, and for it to bind on this outgoing socket
-        # rust sends message that its bind on this outgoing socket is ready
-        # you connect to this outgoing socket
+        # Python↔Rust ZMQ startup ordering (must follow this sequence):
+        #   1. Python creates SHM files and binds on incoming ZMQ socket (REP)
+        #   2. Rust starts, connects to Python's incoming socket, binds its own outgoing socket
+        #   3. Rust sends "hello" to Python's incoming socket to signal readiness
+        #   4. Python receives "hello", then connects to Rust's outgoing socket
+        # This ensures both sides are ready before any data flows.
 
         self.incoming_zmq_socket = self.context.socket(zmq.REP)
         self.incoming_zmq_socket.bind(config.incoming_zmq_sockname)
@@ -368,13 +368,18 @@ class ModelServer:
     def main_loop(self) -> None:
         """Main processing loop for the model server.
 
-        Continuously:
-        1. Polls for incoming inference requests from QUIC server
-        2. Drains queue to process only the freshest frame
-        3. Performs server-side preprocessing if needed
-        4. Runs model inference on GPU
-        5. Serializes and returns detection results
-        6. Handles graceful shutdown via kill switch
+        Each iteration:
+        1. Check kill switch → graceful shutdown if triggered
+        2. Drain incoming ZMQ queue: read all pending requests from SHM, keep only the last
+           (ensures we always process the freshest frame, dropping stale ones)
+        3. Apply server-side preprocessing based on request flags:
+           - image_proc + compress: decompress → resize+normalize
+           - image_proc + no compress: resize+normalize
+           - input_proc + no compress: no-op (client already preprocessed)
+           - input_proc + compress: decompress → transpose → reconstruct tensor
+        4. Move tensor to GPU, run EfficientDet inference
+        5. Serialize ModelServerResponse to SHM → signal QUIC server via ZMQ → wait for ACK
+        6. Log latency breakdown to Parquet
         """
         LOGGER.info("ModelServer %d main loop starting", self.service_id)
 
@@ -395,9 +400,9 @@ class ModelServer:
 
             recv_obj = None
 
-            # Queue draining loop: processes all pending requests, keeping only the most recent
-            # Each queue item requires SHM read + unpickling + ACK send (~1ms overhead per item)
-            # This ensures we always process the freshest frame, dropping stale requests
+            # Queue draining loop: processes all pending requests, keeping only the most recent 
+            # Each queue item requires SHM read + unpickling + ACK send (~1ms overhead per item) 
+            # This ensures we always process the freshest frame, dropping stale requests 
             # TODO: Optimize by sending context_id in ZMQ message header to skip SHM read +
             # unpickling for outdated requests (check context_id before deserializing)
             # TODO: Tune polling timeout based on expected request frequency
@@ -411,11 +416,11 @@ class ModelServer:
                     recv_objlen
                 )
 
-                # Deserialize request from shared memory
+                # Deserialize request from shared memory 
                 recv_obj = pickle.loads(self.incoming_shm_file.buf[:recv_objlen])
                 deserialization_latency = time.perf_counter() - start_time
 
-                # Send ACK to QUIC server confirming request has been read from SHM
+                # Send ACK to QUIC server confirming request has been read from SHM 
                 self.incoming_zmq_socket.send_string("ACK")
 
                 LOGGER.debug(
@@ -484,7 +489,7 @@ class ModelServer:
                     image_shape
                 )
 
-                # Apply server-side preprocessing based on client's pipeline configuration
+                # Apply server-side preprocessing based on client's pipeline configuration 
                 if recv_obj.enable_image_processing:
                     if recv_obj.enable_compression:
                         this_image = decompress_image(this_image)
@@ -492,7 +497,7 @@ class ModelServer:
                             "Image decompressed: shape=%s (PIL)", this_image.size
                         )
 
-                    # Resize + normalize to model input size (returns torch.Tensor)
+                    # Resize + normalize to model input size (returns torch.Tensor) 
                     this_image = self.preprocess_fn_map[recv_obj.base_model](this_image)
                     LOGGER.debug(
                         "Image preprocessing complete: shape=%s (tensor)", this_image.shape
@@ -500,18 +505,18 @@ class ModelServer:
 
                 elif recv_obj.enable_input_processing:
                     if not recv_obj.enable_compression:
-                        # Client already did all preprocessing - no server-side work needed
+                        # Client already did all preprocessing - no server-side work needed 
                         LOGGER.debug(
                             "Input preprocessing: no server-side work (client sent preprocessed tensor)"
                         )
                     else:
-                        # Client sent compressed preprocessed input - decompress and reconstruct tensor
+                        # Client sent compressed preprocessed input - decompress and reconstruct tensor 
                         this_image = decompress_image(this_image)
                         LOGGER.debug(
                             "Input decompressed: shape=%s (PIL)", this_image.size
                         )
 
-                        # Convert PIL Image to numpy array
+                        # Convert PIL Image to numpy array 
                         this_image = np.array(this_image)
                         LOGGER.debug(
                             "Converted to numpy: shape=%s", this_image.shape
@@ -532,6 +537,8 @@ class ModelServer:
                     time.perf_counter() - start_time - deserialization_polling_latency
                 )
 
+                # Move preprocessed tensor to GPU and run EfficientDet inference
+                # predict() handles ImageNet normalization internally (sub mean, div std)
                 this_image = self.torch_model_map[recv_obj.base_model].to_device(this_image)
 
                 result = self.torch_model_map[recv_obj.base_model].predict(this_image)
@@ -543,8 +550,11 @@ class ModelServer:
                     - deserialization_polling_latency
                 )
 
+                # Detach from autograd graph and move back to CPU for serialization
                 result_numpy = result.detach().cpu().numpy()
 
+            # Serialize response to SHM and signal QUIC server (same IPC pattern as client→QUIC):
+            #   write pickled response to SHM → send (context_id, length) via ZMQ → wait for ACK
             resp_pickle = pickle.dumps(
                 ModelServerResponse(
                     context_id=recv_obj.context_id,
@@ -568,6 +578,7 @@ class ModelServer:
                 - inference_latency
             )
 
+            # Flush received ACKs to enable ZMQ REQ/REP to continue
             while True:
                 if self.outgoing_zmq_socket.poll(timeout=1000):
                     self.outgoing_zmq_socket.recv()

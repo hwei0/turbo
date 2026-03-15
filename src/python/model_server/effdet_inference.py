@@ -38,6 +38,12 @@ IMAGENET_DEFAULT_STD = effdet.data.loader.IMAGENET_DEFAULT_STD
 
 
 def create_preprocessing_function(image_size, raw=False):
+    """Factory that returns a preprocessing closure for a given model input size.
+
+    Applies COCO-eval transforms (resize + pad to image_size, convert to channels-first np.ndarray).
+    If raw=True: returns the np.ndarray directly (used when client will compress before sending).
+    If raw=False: wraps in torch.Tensor with batch dim (used when sending uncompressed tensor).
+    """
     def inner_preproc(image):
         inputs, _ = effdet.data.transforms.transforms_coco_eval(
             image_size, use_prefetcher=True
@@ -51,17 +57,26 @@ def create_preprocessing_function(image_size, raw=False):
 
 
 class EfficientDetProfiler:
+    """Loads a trained EfficientDet checkpoint and provides GPU inference.
+
+    Init pipeline: load checkpoint → extract inner model → set eval mode →
+    wrap in DetBenchPredict (handles NMS + bbox decoding) → move to GPU.
+    Precomputes ImageNet normalization tensors on GPU for fast in-place normalize.
+    """
     def __init__(
         self, checkpoint_path: str, base_model: str, device: str, num_classes: int
     ):
+        # Load PyTorch Lightning checkpoint trained on Waymo Open Dataset
         checkpoint_model = EfficientDetModel.load_from_checkpoint(
             checkpoint_path=checkpoint_path,
             base_model=base_model,
             num_classes=num_classes,
         )
         image_size = checkpoint_model.model.config["image_size"]
+        # Unwrap inner model from Lightning wrapper
         model = checkpoint_model.model.model
         model = model.eval()
+        # DetBenchPredict wraps raw model with NMS and bounding box decoding
         model = effdet.DetBenchPredict(model)
         self.device_name = device
         self.model = model.to(device)
@@ -91,6 +106,9 @@ class EfficientDetProfiler:
         return preprocessed_inputs.to(self.device_name)
 
     def predict(self, inputs):
+        # In-place ImageNet normalization: (pixel - mean) / std, on GPU
+        # Returns tensor of shape [batch, num_detections, 6] where each detection is
+        # [x_min, y_min, x_max, y_max, score, label]
         inputs = inputs.float().sub_(self.image_mean).div_(self.image_std)
         return self.model(inputs)
 
