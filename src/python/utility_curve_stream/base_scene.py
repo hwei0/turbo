@@ -13,19 +13,22 @@ class BaseScene:
     def eval_utilities_and_allocations_timestamp(
         self, bandwidth, target_timestamp: int, t_RTT, t_SLO
     ):
-        """
-        Evaluate allocation at a single timestamp.
+        """Evaluate optimal bandwidth allocation at a single timestamp.
+
+        Steps:
+        1. Find the closest utility curve timestamp at or before target_timestamp
+        2. Instantiate concrete step functions by fixing RTT and SLO on each camera's
+           utility curve (each step function maps bandwidth → expected detection utility
+           for a given model config)
+        3. Run the LP allocator to select the best model config per service
+        4. Return average expected utility and per-service allocation details
+           (bandwidth_allocated, model_config_name, expected_utility)
 
         Parameters:
-        - bandwidth: Total bandwidth budget.
+        - bandwidth: Total bandwidth budget (Mbps).
         - target_timestamp: The target timestamp to evaluate.
         - t_RTT: Round-trip time in milliseconds.
         - t_SLO: Latency SLO in milliseconds.
-
-        Returns:
-        - timestamp: The closest timestamp at or before target_timestamp.
-        - average_expected_utility: Mean predicted utility across services.
-        - allocs_over_time_for_timestamp: Per-camera allocation details.
         """
         # Find the closest timestamp at or before target_timestamp
         timestamp = -1e9
@@ -38,11 +41,14 @@ class BaseScene:
                 timestamp = ts
                 camera_curves = cc
 
+        # Fix RTT and SLO to produce concrete step functions (bandwidth → utility).
+        # Each step corresponds to a model config with its required bandwidth and expected utility.
         concrete_curves = {
             camera: curve.get(t_RTT=t_RTT, t_SLO=t_SLO)
             for camera, curve in camera_curves.items()
         }
 
+        # Run LP solver to find optimal per-service model config selection
         allocation = self.baseline_allocator.allocate(bandwidth, concrete_curves)
 
         average_expected_utility = 0

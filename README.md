@@ -258,7 +258,7 @@ Follow the steps below to run each process directly on your host without Docker.
 
 **Client (AV) side:**
 - Python 3.10; preferably managed via [uv](https://docs.astral.sh/uv/) (alternatively, via [Anaconda](https://anaconda.org/), specifically the [`Miniconda3-py310_25.11.1-1` release version on this page](https://repo.anaconda.com/miniconda/))
-- Rust 1.70+ (for QUIC transport)
+- [Rust](https://rust-lang.org/tools/install/) 1.85+ (for QUIC transport)
 - USB webcams (or video sources)
 - Needed dependencies for `OpenCV` -- (e.g. `sudo apt-get update && sudo apt-get install ffmpeg libsm6 libxext6`)
 
@@ -266,7 +266,7 @@ Follow the steps below to run each process directly on your host without Docker.
 - Python 3.10; preferably managed via [uv](https://docs.astral.sh/uv/) (alternatively, via [Anaconda](https://anaconda.org/), specifically the [`Miniconda3-py310_25.11.1-1` release version on this page](https://repo.anaconda.com/miniconda/))
 - CUDA-capable GPU (tested on H100, A100)
 - PyTorch 2.0+
-- Rust 1.70+ (for QUIC transport)
+- [Rust](https://rust-lang.org/tools/install/) 1.85+ (for QUIC transport)
 - Needed dependencies for `OpenCV` -- (e.g. `sudo apt-get update && sudo apt-get install ffmpeg libsm6 libxext6`)
 
 ### Installation

@@ -91,6 +91,8 @@ impl WeightedStreamManager {
         }
     }
 
+    /// Enqueues a new frame for QUIC transmission, enforcing LIFO freshness by
+    /// dropping older unsent frames so the send_loop always transmits the newest data.
     //TODO: TIME THIS FUNCTION
     pub async fn enqueue_msg(&self, bytes: Vec<u8>, image_context: i32) -> Result<()> {
         if self.is_junk {
@@ -108,9 +110,15 @@ impl WeightedStreamManager {
             queue.push_back(TxQueueItem::new(bytes, image_context));
             return Ok(());
         }
+        // KEY DESIGN: LIFO with mid-transmission protection. Drop all queued items
+        // except the front one (which may be mid-transmission by send_loop).
         while queue.len() > 1 {
             queue.pop_back();
         }
+        // If the front item hasn't started transmitting (tx_idx == 0), it's safe
+        // to drop. If tx_idx > 0, the send_loop has already written its header
+        // and partial payload to the QUIC stream, so the receiver expects the
+        // remaining bytes — we must keep it.
         if queue
             .front()
             .expect("queue must not be empty after length check")

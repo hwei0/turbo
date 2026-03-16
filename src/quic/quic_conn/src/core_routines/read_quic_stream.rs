@@ -37,6 +37,12 @@ use crate::{
     },
 };
 impl WeightedStreamManager {
+    /// Receives frames from the remote QUIC peer and delivers them to the local Python process.
+    ///
+    /// Reads the wire format [4B context_id] [4B payload_len] [payload] from the QUIC
+    /// ReceiveStream, copies the payload into POSIX shared memory, sends the byte count
+    /// to Python via ZMQ REQ, and blocks until Python ACKs (confirming it read from SHM).
+    /// The junk service skips SHM and ZMQ since it carries no real data.
     pub async fn read_stream_loop(
         &self,
         service_name: i32,
@@ -122,6 +128,10 @@ impl WeightedStreamManager {
                 return Ok(());
             }
             let bw = self.bandwidth_manager.get_bw(self.service_name).await;
+            // Read the wire header written by the sender's send_loop:
+            //   [4 bytes] context_id  — unique frame sequence number (big-endian i32)
+            //   [4 bytes] payload_len — total payload size in bytes (big-endian i32)
+            // read_exact blocks until all 4 bytes arrive (may span multiple QUIC packets).
             let mut image_context_buf: [u8; 4] = [0, 0, 0, 0];
             buf_reader.read_exact(&mut image_context_buf).await?;
             let image_context = i32::from_be_bytes([
@@ -176,6 +186,10 @@ impl WeightedStreamManager {
                     .await?;
             }
 
+            // For real services: copy payload to SHM, notify Python, wait for ACK.
+            // The ZMQ REQ/REP handshake serializes access to the SHM region:
+            // we write, tell Python the size, Python reads, Python ACKs, then we
+            // can write the next frame. This prevents data races on the SHM buffer.
             if !self.is_junk {
                 debug!("service={} writing to shared memory", self.service_name);
 
